@@ -1,0 +1,7 @@
+go 1.26.3
+
+use (
+	./github-app-token-resource
+	./sdk
+	./smb-resource
+)
