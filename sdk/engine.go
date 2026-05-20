@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 type Driver[Source any, Version any, InParams any, OutParams any, Metadata any] interface {
@@ -29,10 +30,7 @@ type Response[Version any, Metadata any] struct {
 func RunCommand[Source any, Version any, InParams any, OutParams any, Metadata any](driver Driver[Source, Version, InParams, OutParams, Metadata]) {
 	ctx := context.Background()
 
-	command := "check"
-	if len(os.Args) > 1 {
-		command = os.Args[1]
-	}
+	command := filepath.Base(os.Args[0])
 
 	switch command {
 	case "check":
