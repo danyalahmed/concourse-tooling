@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,8 +34,8 @@ func (d *Driver) Check(ctx context.Context, source Source, version *Version) ([]
 	}
 	var foundVersions []versionItem
 	for _, file := range files {
-		if file.IsDir() {
-			vStr := fmt.Sprintf("%s-%d", file.Name(), file.ModTime().Unix())
+		if !file.IsDir() {
+			vStr := strconv.FormatInt(file.ModTime().UnixNano(), 10)
 			foundVersions = append(foundVersions, versionItem{
 				id:      vStr,
 				modTime: file.ModTime(),
@@ -51,12 +52,10 @@ func (d *Driver) Check(ctx context.Context, source Source, version *Version) ([]
 	}
 
 	latest := Version{Version: foundVersions[len(foundVersions)-1].id}
-	if version == nil {
-		// First run: return only the single latest version
+	if version == nil || version.Version == "" {
 		return []Version{latest}, nil
 	}
 
-	// Subsequent runs: Find where the current 'version' sits in history
 	var result []Version
 	foundCurrentIndex := -1
 	for i, fv := range foundVersions {
@@ -79,16 +78,7 @@ func (d *Driver) Check(ctx context.Context, source Source, version *Version) ([]
 
 func (d *Driver) In(ctx context.Context, source Source, version Version, params InParams, targetDir string) (Version, []Metadata, error) {
 	if params.File == "" {
-		return version, []Metadata{}, fmt.Errorf("params.file must be specified in the get step")
-	}
-
-	// Parse the version string to find the exact historical directory name
-	var remoteDir string
-	if idx := strings.LastIndex(version.Version, "-"); idx != -1 {
-		remoteDir = version.Version[:idx]
-	} else {
-		// Fallback or error if the version string is malformed
-		return version, []Metadata{}, fmt.Errorf("invalid version format received: %s", version.Version)
+		return version, []Metadata{}, nil
 	}
 
 	conn, session, share, err := d.connect(ctx, source)
@@ -97,66 +87,50 @@ func (d *Driver) In(ctx context.Context, source Source, version Version, params 
 	}
 	defer cleanup(share, session, conn)
 
-	cleanFile := strings.Trim(params.File, "/\\")
-	remotePath := remoteDir + "\\" + strings.ReplaceAll(cleanFile, "/", "\\")
-	remoteFile, err := share.Open(remotePath)
-	if err != nil {
-		return version, []Metadata{}, fmt.Errorf("failed to open remote file %s: %w", remotePath, err)
-	}
-	defer remoteFile.Close()
+	remotePath := toSMBPath(params.File)
 
-	stat, err := remoteFile.Stat()
+	stat, err := share.Stat(remotePath)
 	if err != nil {
-		return version, []Metadata{}, fmt.Errorf("failed to stat remote file: %w", err)
+		return version, []Metadata{}, fmt.Errorf("failed to stat remote path %s: %w", remotePath, err)
 	}
 
-	// Create the destination folder context locally if it doesn't exist
+	if stat.IsDir() {
+		dest := filepath.Join(targetDir, filepath.Base(params.File))
+		if err := downloadDir(share, remotePath, dest); err != nil {
+			return version, []Metadata{}, fmt.Errorf("failed to download directory: %w", err)
+		}
+		return version, []Metadata{
+			{Name: "type", Value: "directory"},
+			{Name: "path", Value: remotePath},
+		}, nil
+	}
+
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return version, []Metadata{}, fmt.Errorf("failed to create target directory: %w", err)
 	}
 
 	localPath := filepath.Join(targetDir, filepath.Base(params.File))
-	localFile, err := os.Create(localPath)
+	sha, size, err := downloadFile(share, remotePath, localPath)
 	if err != nil {
-		return version, []Metadata{}, fmt.Errorf("failed to create local file: %w", err)
-	}
-	defer localFile.Close()
-
-	hasher := sha256.New()
-	multiWriter := io.MultiWriter(localFile, hasher)
-
-	if _, err := io.Copy(multiWriter, remoteFile); err != nil {
-		return version, []Metadata{}, fmt.Errorf("failed to stream copy data: %w", err)
+		return version, []Metadata{}, err
 	}
 
-	meta := []Metadata{
-		{Name: "filename", Value: stat.Name()},
-		{Name: "size_bytes", Value: fmt.Sprintf("%d", stat.Size())},
-		{Name: "sha256", Value: fmt.Sprintf("%x", hasher.Sum(nil))},
-	}
-
-	return version, meta, nil
+	return version, []Metadata{
+		{Name: "filename", Value: filepath.Base(params.File)},
+		{Name: "size_bytes", Value: fmt.Sprintf("%d", size)},
+		{Name: "sha256", Value: sha},
+	}, nil
 }
 
-func (d *Driver) Out(ctx context.Context, source Source, params OutParams, targetDir string) (Version, []Metadata, error) {
+func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourceDir string) (Version, []Metadata, error) {
 	if params.File == "" {
 		return Version{}, []Metadata{}, fmt.Errorf("params.file must be specified in the put step")
 	}
 
-	localPath := filepath.Join(targetDir, params.File)
-	localFile, err := os.Open(localPath)
+	localPath := filepath.Join(sourceDir, params.File)
+	localStat, err := os.Stat(localPath)
 	if err != nil {
-		return Version{}, []Metadata{}, fmt.Errorf("failed to open local file %s: %w", localPath, err)
-	}
-	defer localFile.Close()
-
-	stat, err := localFile.Stat()
-	if err != nil {
-		return Version{}, []Metadata{}, fmt.Errorf("failed to stat local file: %w", err)
-	}
-
-	if stat.IsDir() {
-		return Version{}, []Metadata{}, fmt.Errorf("params.file points to a directory; uploading directories is not supported directly")
+		return Version{}, []Metadata{}, fmt.Errorf("failed to stat local path %s: %w", localPath, err)
 	}
 
 	conn, session, share, err := d.connect(ctx, source)
@@ -165,43 +139,163 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, targe
 	}
 	defer cleanup(share, session, conn)
 
-	cleanFileName := filepath.Base(params.File)
-	folderBaseName := strings.TrimSuffix(cleanFileName, filepath.Ext(cleanFileName))
-	if folderBaseName == "" {
-		folderBaseName = "build" // Absolute fallback safety mechanism
+	destRoot := params.Dest
+	if destRoot == "" {
+		destRoot = filepath.Base(params.File)
+	}
+	remoteBase := toSMBPath(destRoot)
+
+	if localStat.IsDir() {
+		if err := uploadDir(share, localPath, remoteBase); err != nil {
+			return Version{}, []Metadata{}, fmt.Errorf("failed to upload directory: %w", err)
+		}
+		v := strconv.FormatInt(time.Now().UnixNano(), 10)
+		return Version{Version: v}, []Metadata{
+			{Name: "type", Value: "directory"},
+			{Name: "path", Value: remoteBase},
+		}, nil
 	}
 
-	remoteDir := fmt.Sprintf("%s-%d", folderBaseName, time.Now().Unix())
-
-	err = share.Mkdir(remoteDir, 0755)
-	if err != nil {
-		return Version{}, []Metadata{}, fmt.Errorf("failed to create remote directory %s: %w", remoteDir, err)
+	parent := remoteParent(remoteBase)
+	if parent != "" {
+		if err := share.MkdirAll(parent, 0755); err != nil {
+			return Version{}, []Metadata{}, fmt.Errorf("failed to create remote directories: %w", err)
+		}
 	}
 
-	remotePath := remoteDir + "\\" + cleanFileName
-	remoteFile, err := share.Create(remotePath)
+	sha, size, err := uploadFile(share, localPath, remoteBase)
 	if err != nil {
-		return Version{}, []Metadata{}, fmt.Errorf("failed to create remote file %s: %w", remotePath, err)
+		return Version{}, []Metadata{}, err
+	}
+
+	remoteStat, err := share.Stat(remoteBase)
+	if err != nil {
+		return Version{}, []Metadata{}, fmt.Errorf("failed to stat uploaded file: %w", err)
+	}
+	v := strconv.FormatInt(remoteStat.ModTime().UnixNano(), 10)
+
+	return Version{Version: v}, []Metadata{
+		{Name: "filename", Value: filepath.Base(destRoot)},
+		{Name: "size_bytes", Value: fmt.Sprintf("%d", size)},
+		{Name: "sha256", Value: sha},
+		{Name: "remote_path", Value: remoteBase},
+	}, nil
+}
+
+// --- helpers ---
+
+func toSMBPath(p string) string {
+	return strings.ReplaceAll(strings.Trim(p, "/\\"), "/", "\\")
+}
+
+func remoteParent(p string) string {
+	idx := strings.LastIndex(p, "\\")
+	if idx <= 0 {
+		return ""
+	}
+	return p[:idx]
+}
+
+func downloadFile(share *smb2.Share, remotePath, localPath string) (sha256Hex string, size int64, err error) {
+	remoteFile, err := share.Open(remotePath)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to open remote file %s: %w", remotePath, err)
+	}
+	defer remoteFile.Close()
+
+	localFile, err := os.Create(localPath)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to create local file %s: %w", localPath, err)
+	}
+	defer localFile.Close()
+
+	hasher := sha256.New()
+	written, err := io.Copy(io.MultiWriter(localFile, hasher), remoteFile)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to copy data: %w", err)
+	}
+
+	return fmt.Sprintf("%x", hasher.Sum(nil)), written, nil
+}
+
+func uploadFile(share *smb2.Share, localPath, remotePath string) (sha256Hex string, size int64, err error) {
+	localFile, err := os.Open(localPath)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to open local file %s: %w", localPath, err)
+	}
+	defer localFile.Close()
+
+	remoteFile, err := share.OpenFile(remotePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0666)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to create remote file %s: %w", remotePath, err)
 	}
 	defer remoteFile.Close()
 
 	hasher := sha256.New()
-	multiWriter := io.MultiWriter(remoteFile, hasher)
-
-	if _, err := io.Copy(multiWriter, localFile); err != nil {
-		return Version{}, []Metadata{}, fmt.Errorf("failed to upload data to SMB share: %w", err)
+	written, err := io.Copy(io.MultiWriter(remoteFile, hasher), localFile)
+	if err != nil {
+		return "", 0, fmt.Errorf("failed to upload data: %w", err)
 	}
 
-	newVersionStr := remoteDir
+	return fmt.Sprintf("%x", hasher.Sum(nil)), written, nil
+}
 
-	meta := []Metadata{
-		{Name: "filename", Value: cleanFileName},
-		{Name: "size_bytes", Value: fmt.Sprintf("%d", stat.Size())},
-		{Name: "sha256", Value: fmt.Sprintf("%x", hasher.Sum(nil))},
-		{Name: "remote_path", Value: remotePath},
+func downloadDir(share *smb2.Share, remoteDir, localDir string) error {
+	if err := os.MkdirAll(localDir, 0755); err != nil {
+		return fmt.Errorf("failed to create local directory %s: %w", localDir, err)
 	}
 
-	return Version{Version: newVersionStr}, meta, nil
+	entries, err := share.ReadDir(remoteDir)
+	if err != nil {
+		return fmt.Errorf("failed to read remote directory %s: %w", remoteDir, err)
+	}
+
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == "." || name == ".." {
+			continue
+		}
+		childRemote := remoteDir + "\\" + name
+		childLocal := filepath.Join(localDir, name)
+
+		if entry.IsDir() {
+			if err := downloadDir(share, childRemote, childLocal); err != nil {
+				return err
+			}
+		} else {
+			if _, _, err := downloadFile(share, childRemote, childLocal); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func uploadDir(share *smb2.Share, localDir, remoteDir string) error {
+	if err := share.MkdirAll(remoteDir, 0755); err != nil {
+		return fmt.Errorf("failed to create remote directory %s: %w", remoteDir, err)
+	}
+
+	entries, err := os.ReadDir(localDir)
+	if err != nil {
+		return fmt.Errorf("failed to read local directory %s: %w", localDir, err)
+	}
+
+	for _, entry := range entries {
+		childLocal := filepath.Join(localDir, entry.Name())
+		childRemote := remoteDir + "\\" + entry.Name()
+
+		if entry.IsDir() {
+			if err := uploadDir(share, childLocal, childRemote); err != nil {
+				return err
+			}
+		} else {
+			if _, _, err := uploadFile(share, childLocal, childRemote); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
 func cleanup(share *smb2.Share, session *smb2.Session, conn net.Conn) {

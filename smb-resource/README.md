@@ -32,7 +32,7 @@ resources:
 
 ## Usage
 
-### `get` — download a file
+### `get` — download a file or directory
 
 ```yaml
 - get: data
@@ -40,9 +40,17 @@ resources:
     file: backups/db.sql
 ```
 
-Downloads the file from a versioned remote directory and writes it locally. Metadata includes `filename`, `size_bytes`, `sha256`.
+Downloads a single file from the share to `db.sql` locally. Metadata includes `filename`, `size_bytes`, `sha256`.
 
-### `put` — upload a file
+If `params.file` points to a directory, the entire directory tree is downloaded recursively, preserving the structure:
+
+```yaml
+- get: data
+  params:
+    file: project/src/
+```
+
+### `put` — upload a file or directory
 
 ```yaml
 - put: data
@@ -50,15 +58,24 @@ Downloads the file from a versioned remote directory and writes it locally. Meta
     file: build/output.tgz
 ```
 
-Creates a timestamped remote directory (`<basename>-<unix>`), uploads the file, and returns the version string.
+Uploads a single file to the share. `params.dest` optionally specifies the remote path (defaults to the basename of `params.file`). Parent directories on the remote side are created automatically.
+
+If `params.file` points to a local directory, the entire directory tree is uploaded recursively, preserving the structure:
+
+```yaml
+- put: data
+  params:
+    file: dist/
+    dest: releases/v1.0/
+```
 
 ## Behavior
 
 | command | what happens |
 |---------|-------------|
-| `check` | Lists directories on the share sorted by modification time. On first run returns only the latest; subsequent runs returns all from the current version forward. |
-| `in` | Connects to the share, reads the file specified by `params.file` from the versioned remote directory, streams it to a local file, and returns SHA-256 metadata. |
-| `out` | Creates a timestamped remote directory, uploads the local file with SHA-256 hashing, returns version + metadata. |
+| `check` | Lists files on the share root sorted by modification time. On first run returns only the latest; subsequent runs return all from the current version forward. |
+| `in` | Connects to the share, reads the file or directory specified by `params.file`, streams to the local target. Returns SHA-256 metadata for single files. |
+| `out` | Uploads a local file or directory to the share. Returns version + metadata. Remote parent directories are created as needed. |
 
 ## Docker
 
@@ -70,7 +87,18 @@ docker build -t smb-resource .
 
 ```sh
 go build ./cmd/resource/
+
+# download a single file
 echo '{"source":{"host":"...","username":"...","password":"...","share":"..."},"params":{"file":"test.txt"}}' | ./resource in /tmp/out
+
+# download a directory recursively
+echo '{"source":{...},"params":{"file":"backups/"}}' | ./resource in /tmp/out
+
+# upload a file
+echo '{"source":{...},"params":{"file":"build.tgz","dest":"remote/build.tgz"}}' | ./resource out /tmp/source
+
+# upload a directory recursively
+echo '{"source":{...},"params":{"file":"dist/","dest":"releases/v1.0/"}}' | ./resource out /tmp/source
 ```
 
 ## Development
