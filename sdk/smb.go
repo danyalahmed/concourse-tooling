@@ -1,4 +1,4 @@
-package resource
+package sdk
 
 import (
 	"context"
@@ -9,13 +9,12 @@ import (
 	"github.com/cloudsoda/go-smb2"
 )
 
-func (d *Driver) connect(ctx context.Context, source Source) (net.Conn, *smb2.Session, *smb2.Share, error) {
-	port := source.Port
+func SMBConnect(ctx context.Context, host string, port int, username, password, share string) (net.Conn, *smb2.Session, *smb2.Share, error) {
 	if port == 0 {
 		port = 445
 	}
 
-	addr := net.JoinHostPort(source.Host, strconv.Itoa(port))
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
 
 	var netDialer net.Dialer
 	conn, err := netDialer.DialContext(ctx, "tcp", addr)
@@ -25,8 +24,8 @@ func (d *Driver) connect(ctx context.Context, source Source) (net.Conn, *smb2.Se
 
 	dialer := &smb2.Dialer{
 		Initiator: &smb2.NTLMInitiator{
-			User:     source.Username,
-			Password: source.Password,
+			User:     username,
+			Password: password,
 		},
 	}
 
@@ -35,15 +34,14 @@ func (d *Driver) connect(ctx context.Context, source Source) (net.Conn, *smb2.Se
 		conn.Close()
 		return nil, nil, nil, fmt.Errorf("smb authentication failed: %w", err)
 	}
-	
-	// attach the context to the session so that it can be used in subsequent calls
+
 	session = session.WithContext(ctx)
 
-	share, err := session.Mount(source.Share)
+	mounted, err := session.Mount(share)
 	if err != nil {
 		session.Logoff()
 		conn.Close()
 		return nil, nil, nil, fmt.Errorf("mounting share failed: %w", err)
 	}
-	return conn, session, share, nil
+	return conn, session, mounted, nil
 }

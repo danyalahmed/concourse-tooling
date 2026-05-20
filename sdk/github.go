@@ -1,4 +1,4 @@
-package resource
+package sdk
 
 import (
 	"crypto/x509"
@@ -30,18 +30,18 @@ func NewGitHubClient() *GitHubClient {
 	}
 }
 
-func (c *GitHubClient) GenerateInstallationToken(src Source) (string, error) {
-	key, err := parsePrivateKey([]byte(src.PrivateKey))
+func (c *GitHubClient) GenerateInstallationToken(appID, installationID, privateKey string) (string, error) {
+	key, err := parsePrivateKey([]byte(privateKey))
 	if err != nil {
 		return "", fmt.Errorf("parsing private key: %w", err)
 	}
 
-	jwtToken, err := c.generateJWT(src.AppID, key)
+	jwtToken, err := c.generateJWT(appID, key)
 	if err != nil {
 		return "", fmt.Errorf("generating JWT: %w", err)
 	}
 
-	return c.exchangeJWT(jwtToken, src.InstallationID)
+	return c.exchangeJWT(jwtToken, installationID)
 }
 
 func parsePrivateKey(pemData []byte) (any, error) {

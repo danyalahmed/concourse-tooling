@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	sdk "github.com/danyalahmed/concourse-resource-sdk"
 )
 
 func (d *Driver) Check(ctx context.Context, source Source, version *Version) ([]Version, error) {
@@ -14,8 +16,8 @@ func (d *Driver) Check(ctx context.Context, source Source, version *Version) ([]
 }
 
 func (d *Driver) In(ctx context.Context, source Source, version Version, req InRequest, targetDir string) (Version, Metadata, error) {
-	client := NewGitHubClient()
-	token, err := client.GenerateInstallationToken(req.Source)
+	client := sdk.NewGitHubClient()
+	token, err := client.GenerateInstallationToken(req.Source.AppID, req.Source.InstallationID, req.Source.PrivateKey)
 	if err != nil {
 		return Version{}, Metadata{}, fmt.Errorf("generating token: %w", err)
 	}

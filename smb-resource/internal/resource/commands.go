@@ -14,10 +14,11 @@ import (
 	"time"
 
 	"github.com/cloudsoda/go-smb2"
+	sdk "github.com/danyalahmed/concourse-resource-sdk"
 )
 
 func (d *Driver) Check(ctx context.Context, source Source, version *Version) ([]Version, error) {
-	conn, session, share, err := d.connect(ctx, source)
+	conn, session, share, err := sdk.SMBConnect(ctx, source.Host, source.Port, source.Username, source.Password, source.Share)
 	if err != nil {
 		return nil, err
 	}
@@ -81,7 +82,7 @@ func (d *Driver) In(ctx context.Context, source Source, version Version, params 
 		return version, []Metadata{}, nil
 	}
 
-	conn, session, share, err := d.connect(ctx, source)
+	conn, session, share, err := sdk.SMBConnect(ctx, source.Host, source.Port, source.Username, source.Password, source.Share)
 	if err != nil {
 		return version, []Metadata{}, err
 	}
@@ -133,7 +134,7 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 		return Version{}, []Metadata{}, fmt.Errorf("failed to stat local path %s: %w", localPath, err)
 	}
 
-	conn, session, share, err := d.connect(ctx, source)
+	conn, session, share, err := sdk.SMBConnect(ctx, source.Host, source.Port, source.Username, source.Password, source.Share)
 	if err != nil {
 		return Version{}, []Metadata{}, err
 	}
