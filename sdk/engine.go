@@ -7,10 +7,22 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 )
 
-type Driver[Source any, Version any, InParams any, OutParams any, Metadata any] interface {
+// Metadata represents Concourse resource metadata.
+type Metadata []MetadataItem
+
+// MetadataItem represents a single metadata entry.
+type MetadataItem struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+// Driver defines the interface for a Concourse resource.
+type Driver[Source any, Version any, InParams any, OutParams any] interface {
 	Check(ctx context.Context, source Source, version *Version) ([]Version, error)
 	In(ctx context.Context, source Source, version Version, params InParams, targetDir string) (Version, Metadata, error)
 	Out(ctx context.Context, source Source, params OutParams, sourceDir string) (Version, Metadata, error)
@@ -22,13 +34,15 @@ type Request[Source any, Version any, Params any] struct {
 	Params  Params  `json:"params,omitempty"`
 }
 
-type Response[Version any, Metadata any] struct {
+type Response[Version any] struct {
 	Version  Version  `json:"version,omitempty"`
 	Metadata Metadata `json:"metadata,omitempty"`
 }
 
-func RunCommand[Source any, Version any, InParams any, OutParams any, Metadata any](driver Driver[Source, Version, InParams, OutParams, Metadata]) {
-	ctx := context.Background()
+// RunCommand is the entry point for the resource commands.
+func RunCommand[Source any, Version any, InParams any, OutParams any](driver Driver[Source, Version, InParams, OutParams]) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
 
 	command := filepath.Base(os.Args[0])
 
@@ -41,7 +55,6 @@ func RunCommand[Source any, Version any, InParams any, OutParams any, Metadata a
 		if err != nil {
 			fail("Driver check execution failed: %v", err)
 		}
-		// concourse expects an array of versions, even if zero version is returned
 		if versions == nil {
 			versions = []Version{}
 		}
@@ -60,12 +73,15 @@ func RunCommand[Source any, Version any, InParams any, OutParams any, Metadata a
 			fail("Driver in execution failed: %v", err)
 		}
 
-		resp := Response[Version, Metadata]{
+		resp := Response[Version]{
 			Version:  version,
 			Metadata: metadata,
 		}
 		mustEncode(resp)
 	case "out":
+		if len(os.Args) < 2 {
+			fail("Missing source directory argument for 'out' command")
+		}
 		sourceDir := os.Args[1]
 
 		var req Request[Source, any, OutParams]
@@ -76,7 +92,7 @@ func RunCommand[Source any, Version any, InParams any, OutParams any, Metadata a
 			fail("Driver out execution failed: %v", err)
 		}
 
-		resp := Response[Version, Metadata]{
+		resp := Response[Version]{
 			Version:  version,
 			Metadata: metadata,
 		}
@@ -84,6 +100,16 @@ func RunCommand[Source any, Version any, InParams any, OutParams any, Metadata a
 	default:
 		fail("Unknown command: %s", command)
 	}
+}
+
+// Log writes a message to stderr for Concourse to display.
+func Log(args ...any) {
+	fmt.Fprintln(os.Stderr, args...)
+}
+
+// Logf writes a formatted message to stderr for Concourse to display.
+func Logf(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, format+"\n", args...)
 }
 
 func mustDecode(v any) {
@@ -102,6 +128,7 @@ func mustEncode(v any) {
 }
 
 func fail(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, format+"\n", args...)
+	Logf(format, args...)
 	os.Exit(1)
 }
+

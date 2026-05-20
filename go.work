@@ -1,6 +1,7 @@
 go 1.26.3
 
 use (
+	./cpanel-backup-to-smb-resource
 	./github-app-token-resource
 	./sdk
 	./smb-resource

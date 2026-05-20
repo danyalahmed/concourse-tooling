@@ -21,9 +21,5 @@ type OutParams struct {
 	Dest string `json:"dest"`
 }
 
-type Metadata struct {
-	Name  string `json:"name"`
-	Value string `json:"value"`
-}
-
 type Driver struct{}
+

@@ -1,10 +1,9 @@
-module github.com/danyalahmed/concourse-resource-sdk
+module github.com/danyalahmed/cpanel-backup-to-smb-resource
 
 go 1.26.3
 
 require (
 	github.com/cloudsoda/go-smb2 v0.0.0-20260512215926-828fc89b00fb
-	github.com/golang-jwt/jwt/v5 v5.3.1
 	golang.org/x/crypto v0.9.0
 )
 
