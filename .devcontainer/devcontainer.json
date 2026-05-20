@@ -1,0 +1,30 @@
+{
+    "name": "Go",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "context": ".."
+    },
+    "workspaceFolder": "/workspaces",
+    "runArgs": [
+        "--userns=keep-id"
+    ],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "golang.go"
+            ],
+            "settings": {
+                "go.goplsOptions": {
+                    "ui.diagnostic.staticcheck": true
+                },
+                "go.formatTool": "gofmt",
+                "editor.formatOnSave": true
+            }
+        },
+        "mounts": [
+            "source=go-modules,target=/go/pkg/mod,type=volume",
+            "source=go-build-cache,target=/home/developer/.cache/go-build,type=volume"
+        ],
+        "remoteUser": "developer"
+    }
+}
