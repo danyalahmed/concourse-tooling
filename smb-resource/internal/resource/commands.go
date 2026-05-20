@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cloudsoda/go-smb2"
 	sdk "github.com/danyalahmed/concourse-resource-sdk"
 )
 
@@ -20,57 +20,58 @@ func (d *Driver) Check(ctx context.Context, source Source, version *Version) ([]
 	}
 	defer sdk.SMBCleanup(conn, session, share)
 
-	files, err := share.ReadDir(".")
+	watchPath := "."
+	if source.Watch != "" {
+		watchPath = sdk.ToSMBPath(source.Watch)
+	}
+
+	latestModTime, err := latestMtime(ctx, share, watchPath)
 	if err != nil {
-		return nil, fmt.Errorf("reading share directory failed: %w", err)
+		return nil, fmt.Errorf("scanning watch path %s: %w", watchPath, err)
 	}
-
-	type versionItem struct {
-		id      string
-		modTime time.Time
-	}
-	var foundVersions []versionItem
-	for _, file := range files {
-		if !file.IsDir() {
-			vStr := strconv.FormatInt(file.ModTime().UnixNano(), 10)
-			foundVersions = append(foundVersions, versionItem{
-				id:      vStr,
-				modTime: file.ModTime(),
-			})
-		}
-	}
-
-	sort.Slice(foundVersions, func(i, j int) bool {
-		return foundVersions[i].modTime.Before(foundVersions[j].modTime)
-	})
-
-	if len(foundVersions) == 0 {
+	if latestModTime.IsZero() {
 		return []Version{}, nil
 	}
 
-	latest := Version{Version: foundVersions[len(foundVersions)-1].id}
-	if version == nil || version.Version == "" {
+	vStr := strconv.FormatInt(latestModTime.UnixNano(), 10)
+	latest := Version{Version: vStr}
+
+	if version == nil || version.Version == "" || version.Version != vStr {
 		return []Version{latest}, nil
 	}
+	return []Version{}, nil
+}
 
-	var result []Version
-	foundCurrentIndex := -1
-	for i, fv := range foundVersions {
-		if fv.id == version.Version {
-			foundCurrentIndex = i
-			break
+func latestMtime(ctx context.Context, share *smb2.Share, path string) (time.Time, error) {
+	entries, err := share.ReadDir(path)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("reading directory %s: %w", path, err)
+	}
+
+	var latest time.Time
+	for _, entry := range entries {
+		name := entry.Name()
+		if name == "." || name == ".." {
+			continue
+		}
+
+		childPath := path + "\\" + name
+
+		if entry.IsDir() {
+			childMtime, err := latestMtime(ctx, share, childPath)
+			if err != nil {
+				return time.Time{}, err
+			}
+			if childMtime.After(latest) {
+				latest = childMtime
+			}
+		} else {
+			if entry.ModTime().After(latest) {
+				latest = entry.ModTime()
+			}
 		}
 	}
-
-	if foundCurrentIndex == -1 {
-		return []Version{latest}, nil
-	}
-
-	for _, fv := range foundVersions[foundCurrentIndex:] {
-		result = append(result, Version{Version: fv.id})
-	}
-
-	return result, nil
+	return latest, nil
 }
 
 func (d *Driver) In(ctx context.Context, source Source, version Version, params InParams, targetDir string) (Version, sdk.Metadata, error) {

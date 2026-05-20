@@ -20,6 +20,7 @@ resources:
       username: ((smb-username))
       password: ((smb-password))
       # port: 445 (default)
+      # watch: nuxt-test            # path to monitor for changes (optional)
 ```
 
 | field | description |
@@ -29,6 +30,7 @@ resources:
 | `username` | SMB username |
 | `password` | SMB password |
 | `port` | SMB port (default `445`) |
+| `watch` | Path on the share to monitor for changes (optional). When set, `check` recursively scans this path and returns a new version whenever any file or directory within it is modified. |
 
 ## Usage
 
@@ -73,7 +75,7 @@ If `params.file` points to a local directory, the entire directory tree is uploa
 
 | command | what happens |
 |---------|-------------|
-| `check` | Lists files on the share root sorted by modification time. On first run returns only the latest; subsequent runs return all from the current version forward. |
+| `check` | If `source.watch` is set, recursively scans that path and returns a new version when any file or directory changes. Otherwise scans the share root. On first run returns the latest mod time; subsequent runs return a new version only when the mod time differs. |
 | `in` | Connects to the share, reads the file or directory specified by `params.file`, streams to the local target. Returns SHA-256 metadata for single files. |
 | `out` | Uploads a local file or directory to the share. Returns version + metadata. Remote parent directories are created as needed. |
 

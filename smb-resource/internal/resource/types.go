@@ -6,6 +6,7 @@ type Source struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Port     int    `json:"port,omitempty"`
+	Watch    string `json:"watch,omitempty"`
 }
 
 type Version struct {
