@@ -41,6 +41,14 @@ func runBackup(ctx context.Context, sshClient *ssh.Client, share *smb2.Share, so
 		return Version{}, nil, fmt.Errorf("streaming database: %w", err)
 	}
 
+	parentDir := sdk.ToSMBPath(params.ParentDir)
+	if params.KeepCount > 0 || params.KeepDays > 0 {
+		sdk.Logf("Applying retention policy (keep_count=%d, keep_days=%d)...", params.KeepCount, params.KeepDays)
+		if err := retainBackups(share, parentDir, params.KeepCount, params.KeepDays); err != nil {
+			return Version{}, nil, fmt.Errorf("retention failed: %w", err)
+		}
+	}
+
 	v := fmt.Sprintf("%d", now.Unix())
 	return Version{Version: v}, sdk.Metadata{
 		{Name: "backup_dir", Value: backupDir},

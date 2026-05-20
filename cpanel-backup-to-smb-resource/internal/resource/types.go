@@ -18,6 +18,8 @@ type InParams struct {
 	ParentDir   string   `json:"parent_dir"`
 	Directories []string `json:"directories"`
 	Excludes    []string `json:"excludes,omitempty"`
+	KeepCount   int      `json:"keep_count,omitempty"`
+	KeepDays    int      `json:"keep_days,omitempty"`
 }
 
 type OutParams any

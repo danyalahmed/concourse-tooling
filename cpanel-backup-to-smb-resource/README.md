@@ -58,6 +58,8 @@ resources:
     excludes:
       - node_modules
       - public_html/cache
+    # keep_count: 5               # keep only the 5 most recent backups
+    # keep_days: 7                # delete backups older than 7 days
 ```
 
 | param | description |
@@ -65,6 +67,8 @@ resources:
 | `parent_dir` | Root directory on SMB under which backup snapshots are created |
 | `directories` | List of remote directory paths (relative to `/home/<user>/`) to back up |
 | `excludes` | Exclude patterns (optional). Simple names match any directory; `dir/sub` only applies when `dir` is in the list. Excluding an entire directory skips it. |
+| `keep_count` | Max number of backup snapshots to retain (optional). Set to `0` or omit to disable. |
+| `keep_days` | Delete snapshots older than this many days (optional). Set to `0` or omit to disable. When both are set, the stricter of the two applies. |
 
 Each backup run produces a timestamped subdirectory on SMB:
 
