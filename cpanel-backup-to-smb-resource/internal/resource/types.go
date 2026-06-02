@@ -16,8 +16,9 @@ type Source struct {
 
 type InParams struct {
 	ParentDir   string   `json:"parent_dir"`
-	Directories []string `json:"directories"`
+	Directories []string `json:"directories,omitempty"`
 	Excludes    []string `json:"excludes,omitempty"`
+	DBOnly      bool     `json:"db_only,omitempty"`
 	KeepCount   int      `json:"keep_count,omitempty"`
 	KeepDays    int      `json:"keep_days,omitempty"`
 }

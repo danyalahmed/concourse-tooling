@@ -21,18 +21,24 @@ func runBackup(ctx context.Context, sshClient *ssh.Client, share *smb2.Share, so
 	dbDir := backupDir + "\\database"
 
 	sdk.Logf("Creating backup directories on SMB: %s", backupDir)
-	if err := share.MkdirAll(filesDir, 0755); err != nil {
-		return Version{}, nil, fmt.Errorf("creating files directory on SMB: %w", err)
+	if !params.DBOnly {
+		if err := share.MkdirAll(filesDir, 0755); err != nil {
+			return Version{}, nil, fmt.Errorf("creating files directory on SMB: %w", err)
+		}
 	}
 	if err := share.MkdirAll(dbDir, 0755); err != nil {
 		return Version{}, nil, fmt.Errorf("creating database directory on SMB: %w", err)
 	}
 
-	for _, dir := range params.Directories {
-		sdk.Logf("Streaming directory %s to SMB...", dir)
-		if err := streamDirectory(ctx, sshClient, share, filesDir, source.Username, dir, params.Excludes); err != nil {
-			return Version{}, nil, fmt.Errorf("streaming directory %s: %w", dir, err)
+	if !params.DBOnly {
+		for _, dir := range params.Directories {
+			sdk.Logf("Streaming directory %s to SMB...", dir)
+			if err := streamDirectory(ctx, sshClient, share, filesDir, source.Username, dir, params.Excludes); err != nil {
+				return Version{}, nil, fmt.Errorf("streaming directory %s: %w", dir, err)
+			}
 		}
+	} else {
+		sdk.Logf("Skipping file backups (db_only=true)")
 	}
 
 	dbFile := dbDir + "\\all_dbs_" + now.Format("2006-01-02") + ".sql"

@@ -17,8 +17,8 @@ func (d *Driver) In(ctx context.Context, source Source, version Version, params 
 	if params.ParentDir == "" {
 		return version, nil, fmt.Errorf("params.parent_dir is required")
 	}
-	if len(params.Directories) == 0 {
-		return version, nil, fmt.Errorf("params.directories must include at least one entry")
+	if len(params.Directories) == 0 && !params.DBOnly {
+		return version, nil, fmt.Errorf("params.directories must include at least one entry when db_only is false")
 	}
 
 	sdk.Logf("Connecting to SSH host %s...", source.Host)
