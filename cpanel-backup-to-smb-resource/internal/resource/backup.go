@@ -76,8 +76,8 @@ func buildExcludesForDir(dir string, excludes []string) ([]string, bool) {
 		if exc == dir {
 			return nil, true
 		}
-		if strings.HasPrefix(exc, dir+"/") {
-			result = append(result, "--exclude="+strings.TrimPrefix(exc, dir+"/"))
+		if after, ok :=strings.CutPrefix(exc, dir+"/"); ok  {
+			result = append(result, "--exclude="+after)
 			continue
 		}
 		if strings.Contains(exc, "/") {
