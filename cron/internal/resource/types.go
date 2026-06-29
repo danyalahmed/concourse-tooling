@@ -5,9 +5,6 @@ type Source struct {
 	Location   string `json:"location"`
 }
 
-type Version struct {
-	Version string `json:"version"`
-}
 
 type InParams any
 type OutParams any

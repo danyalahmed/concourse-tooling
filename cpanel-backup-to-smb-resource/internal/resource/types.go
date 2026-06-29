@@ -25,9 +25,6 @@ type InParams struct {
 
 type OutParams any
 
-type Version struct {
-	Version string `json:"version"`
-}
 
 type Driver struct{}
 

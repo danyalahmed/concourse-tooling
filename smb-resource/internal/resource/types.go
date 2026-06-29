@@ -9,9 +9,6 @@ type Source struct {
 	Watch    string `json:"watch,omitempty"`
 }
 
-type Version struct {
-	Version string `json:"version"`
-}
 
 type InParams struct {
 	File string `json:"file"`

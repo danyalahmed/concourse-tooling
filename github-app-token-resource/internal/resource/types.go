@@ -1,6 +1,8 @@
 package resource
 
-import "fmt"
+import (
+	"fmt"
+)
 
 type Source struct {
 	AppID          string `json:"app_id"`
@@ -10,10 +12,6 @@ type Source struct {
 
 func (s Source) GoString() string {
 	return fmt.Sprintf("resource.Source{AppID: %q, InstallationID: %q, PrivateKey: <redacted>}", s.AppID, s.InstallationID)
-}
-
-type Version struct {
-	Version string `json:"version"`
 }
 
 type Driver struct{}

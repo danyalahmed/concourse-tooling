@@ -21,6 +21,11 @@ type MetadataItem struct {
 	Value string `json:"value"`
 }
 
+// Version represents a Concourse resource version.
+type Version struct {
+	Ref string `json:"version"`
+}
+
 // Driver defines the interface for a Concourse resource.
 type Driver[Source any, Version any, InParams any, OutParams any] interface {
 	Check(ctx context.Context, source Source, version *Version) ([]Version, error)
