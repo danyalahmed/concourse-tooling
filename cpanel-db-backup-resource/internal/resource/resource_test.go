@@ -17,14 +17,3 @@ func TestCheck(t *testing.T) {
 		t.Errorf("Expected 1 version, got %d", len(versions))
 	}
 }
-
-func TestOut(t *testing.T) {
-	d := &Driver{}
-	version, _, err := d.Out(context.Background(), Source{}, nil, "")
-	if err != nil {
-		t.Fatalf("Out failed: %v", err)
-	}
-	if version.Ref != "noop" {
-		t.Errorf("Expected noop ref, got %s", version.Ref)
-	}
-}

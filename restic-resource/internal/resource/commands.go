@@ -48,37 +48,38 @@ func (d *Driver) setupConfig(source Source) (restic.Config, error) {
 }
 
 func (d *Driver) In(ctx context.Context, source Source, version sdk.Version, params InParams, targetDir string) (sdk.Version, sdk.Metadata, error) {
-	if d.Action != "restore" {
-		// Default In behavior for backup/prune resources is just to report version
-		return version, nil, nil
+	// If it's a restore resource, 'in' performs the restore
+	if d.Action == "restore" {
+		cfg, err := d.setupConfig(source)
+		if err != nil {
+			return version, nil, err
+		}
+		if err := restic.MountAll(ctx, cfg); err != nil {
+			return version, nil, err
+		}
+		defer restic.UnmountAll(cfg)
+
+		snapshotID := params.SnapshotID
+		if snapshotID == "" {
+			snapshotID = "latest"
+		}
+
+		target := cfg.MountPathSource
+		if params.TargetSubDir != "" {
+			target = filepath.Join(cfg.MountPathSource, params.TargetSubDir)
+		}
+
+		sdk.Logf("Restoring snapshot %s to %s...", snapshotID, target)
+		_, err = restic.RunRestic(ctx, cfg.Password, "-r", cfg.Repository, "restore", snapshotID, "--target", target)
+		if err != nil {
+			return version, nil, fmt.Errorf("restore failed: %w", err)
+		}
+
+		return version, sdk.Metadata{{Name: "snapshot_id", Value: snapshotID}}, nil
 	}
 
-	cfg, err := d.setupConfig(source)
-	if err != nil {
-		return version, nil, err
-	}
-	if err := restic.MountAll(ctx, cfg); err != nil {
-		return version, nil, err
-	}
-	defer restic.UnmountAll(cfg)
-
-	snapshotID := params.SnapshotID
-	if snapshotID == "" {
-		snapshotID = "latest"
-	}
-
-	target := cfg.MountPathSource
-	if params.TargetSubDir != "" {
-		target = filepath.Join(cfg.MountPathSource, params.TargetSubDir)
-	}
-
-	sdk.Logf("Restoring snapshot %s to %s...", snapshotID, target)
-	_, err = restic.RunRestic(ctx, cfg.Password, "-r", cfg.Repository, "restore", snapshotID, "--target", target)
-	if err != nil {
-		return version, nil, fmt.Errorf("restore failed: %w", err)
-	}
-
-	return version, sdk.Metadata{{Name: "snapshot_id", Value: snapshotID}}, nil
+	// For backup/prune, 'in' is just a no-op that reports the version
+	return version, nil, nil
 }
 
 func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourceDir string) (sdk.Version, sdk.Metadata, error) {
@@ -106,7 +107,7 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 	case "backup":
 		paths := []string{}
 		for _, dir := range params.Directories {
-			paths = append(paths, filepath.Join(cfg.MountPathSource, dir))
+			paths = append(paths, filepath.Join(cfg.MountPathSource, filepath.Clean("/"+dir)))
 		}
 		if len(paths) == 0 {
 			paths = append(paths, cfg.MountPathSource)
@@ -127,26 +128,23 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 
 	case "prune":
 		args := []string{"-r", cfg.Repository, "forget"}
-		if source.KeepDaily > 0 {
-			args = append(args, "--keep-daily", fmt.Sprintf("%d", source.KeepDaily))
-		} else {
-			args = append(args, "--keep-daily", "7")
-		}
-		if source.KeepWeekly > 0 {
-			args = append(args, "--keep-weekly", fmt.Sprintf("%d", source.KeepWeekly))
-		} else {
-			args = append(args, "--keep-weekly", "4")
-		}
-		if source.KeepMonthly > 0 {
-			args = append(args, "--keep-monthly", fmt.Sprintf("%d", source.KeepMonthly))
-		} else {
-			args = append(args, "--keep-monthly", "12")
-		}
-		if source.KeepYearly > 0 {
-			args = append(args, "--keep-yearly", fmt.Sprintf("%d", source.KeepYearly))
-		} else {
-			args = append(args, "--keep-yearly", "3")
-		}
+
+		daily := source.KeepDaily
+		if daily == 0 { daily = 7 }
+		args = append(args, "--keep-daily", fmt.Sprintf("%d", daily))
+
+		weekly := source.KeepWeekly
+		if weekly == 0 { weekly = 4 }
+		args = append(args, "--keep-weekly", fmt.Sprintf("%d", weekly))
+
+		monthly := source.KeepMonthly
+		if monthly == 0 { monthly = 12 }
+		args = append(args, "--keep-monthly", fmt.Sprintf("%d", monthly))
+
+		yearly := source.KeepYearly
+		if yearly == 0 { yearly = 3 }
+		args = append(args, "--keep-yearly", fmt.Sprintf("%d", yearly))
+
 		args = append(args, "--prune")
 
 		sdk.Log("Starting Restic prune (forget)...")

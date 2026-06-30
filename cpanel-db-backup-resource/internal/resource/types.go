@@ -31,6 +31,6 @@ type InParams struct {
 	AllDBs    bool                      `json:"all_dbs,omitempty"`   // If true, backup all accessible DBs
 }
 
-type OutParams any
+type OutParams = InParams // Reuse InParams for Out
 
 type Driver struct{}

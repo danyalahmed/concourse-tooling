@@ -1,16 +1,16 @@
 FROM golang:1.26.3-alpine AS builder
 WORKDIR /src
+RUN apk add --no-cache git
 COPY sdk/ /sdk/
 COPY restic-resource/ /src/
 
 ARG TARGET_CMD
-RUN go build -o /resource/out ./cmd/${TARGET_CMD} && \
-    cp /resource/out /resource/in && \
-    cp /resource/out /resource/check
+RUN go build -o /resource/res ./cmd/${TARGET_CMD}
 
 FROM alpine:3.18
 RUN apk add --no-cache restic sshfs cifs-utils fuse
-# Allow non-privileged use of fuse if needed (though privileged mode is used)
 RUN sed -i 's/#user_allow_other/user_allow_other/g' /etc/fuse.conf
 
-COPY --from=builder /resource/ /opt/resource/
+COPY --from=builder /resource/res /opt/resource/check
+RUN ln -s /opt/resource/check /opt/resource/in && \
+    ln -s /opt/resource/check /opt/resource/out

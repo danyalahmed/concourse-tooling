@@ -15,6 +15,10 @@ A Concourse resource that performs cPanel database backups over SSH and streams 
 * `smb_username`: *Required.* SMB username.
 * `smb_password`: *Required.* SMB password.
 * `smb_share`: *Required.* SMB share name.
+* `keep_daily`: *Optional.* Number of daily backups to keep (default `7`).
+* `keep_weekly`: *Optional.* Number of weekly backups to keep (default `4`).
+* `keep_monthly`: *Optional.* Number of monthly backups to keep (default `12`).
+* `keep_yearly`: *Optional.* Number of yearly backups to keep (default `3`).
 
 ## Behavior
 
@@ -22,7 +26,7 @@ A Concourse resource that performs cPanel database backups over SSH and streams 
 
 Always returns a new version based on the current timestamp.
 
-### `in`: Perform the backup
+### `out`: Perform the backup
 
 1.  Connects to the cPanel server via SSH.
 2.  Connects to the SMB share.
@@ -30,10 +34,11 @@ Always returns a new version based on the current timestamp.
 4.  If `all_dbs` is true, it fetches the list of all databases.
 5.  Iterates through databases and streams `mysqldump | gzip` directly to SMB.
 6.  Uses specific credentials from the `databases` map if provided, otherwise falls back to `admin_mysql_password`.
+7.  Applies GFS retention policy by deleting old backup directories.
 
-### `out`: Not supported
+### `in`: No-op
 
-This resource does not support `put` steps.
+Returns the provided version.
 
 ## Example Configuration
 
@@ -60,9 +65,7 @@ resources:
 jobs:
 - name: nightly-db-backup
   plan:
-  - get: every-night
-    trigger: true
-  - get: db-backup
+  - put: db-backup
     params:
       parent_dir: "/db-backups"
       all_dbs: true

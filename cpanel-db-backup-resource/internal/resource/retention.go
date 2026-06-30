@@ -16,6 +16,32 @@ type dbBackupEntry struct {
 }
 
 func applyDBRetention(share *smb2.Share, parentDir string, source Source) error {
+	entries, err := share.ReadDir(parentDir)
+	if err != nil {
+		return fmt.Errorf("reading parent directory %s: %w", parentDir, err)
+	}
+
+	var names []string
+	for _, entry := range entries {
+		if entry.IsDir() && entry.Name() != "." && entry.Name() != ".." {
+			names = append(names, entry.Name())
+		}
+	}
+
+	toRemove := calculateBackupsToRemove(names, source)
+
+	for _, name := range toRemove {
+		path := sdk.ToSMBPath(parentDir + "/" + name)
+		sdk.Logf("Removing old database backup: %s", name)
+		if err := share.RemoveAll(path); err != nil {
+			return fmt.Errorf("removing backup %s: %w", name, err)
+		}
+	}
+
+	return nil
+}
+
+func calculateBackupsToRemove(names []string, source Source) []string {
 	daily := source.KeepDaily
 	if daily == 0 {
 		daily = 7
@@ -33,17 +59,8 @@ func applyDBRetention(share *smb2.Share, parentDir string, source Source) error 
 		yearly = 3
 	}
 
-	entries, err := share.ReadDir(parentDir)
-	if err != nil {
-		return fmt.Errorf("reading parent directory %s: %w", parentDir, err)
-	}
-
 	var backups []dbBackupEntry
-	for _, entry := range entries {
-		name := entry.Name()
-		if !entry.IsDir() || name == "." || name == ".." {
-			continue
-		}
+	for _, name := range names {
 		// Expecting format YYYY-MM-DD
 		ts, err := time.Parse("2006-01-02", name)
 		if err != nil {
@@ -51,7 +68,6 @@ func applyDBRetention(share *smb2.Share, parentDir string, source Source) error 
 		}
 		backups = append(backups, dbBackupEntry{
 			name:      name,
-			path:      sdk.ToSMBPath(parentDir + "/" + name),
 			timestamp: ts,
 		})
 	}
@@ -67,6 +83,7 @@ func applyDBRetention(share *smb2.Share, parentDir string, source Source) error 
 	keep := make(map[string]bool)
 
 	// GFS Retention Logic
+	d, w, m, y := daily, weekly, monthly, yearly
 	for _, b := range backups {
 		year, month, day := b.timestamp.Date()
 		_, week := b.timestamp.ISOWeek()
@@ -76,44 +93,39 @@ func applyDBRetention(share *smb2.Share, parentDir string, source Source) error 
 		weeklyKey := fmt.Sprintf("w-%d-%d", year, week)
 		dailyKey := fmt.Sprintf("d-%d-%d-%d", year, month, day)
 
-		if yearly > 0 {
-			if !keep[yearlyKey] {
-				keep[yearlyKey] = true
-				yearly--
-				keep[b.name] = true
-			}
+		keepThis := false
+		if y > 0 && !keep[yearlyKey] {
+			keep[yearlyKey] = true
+			y--
+			keepThis = true
 		}
-		if monthly > 0 {
-			if !keep[monthlyKey] {
-				keep[monthlyKey] = true
-				monthly--
-				keep[b.name] = true
-			}
+		if m > 0 && !keep[monthlyKey] {
+			keep[monthlyKey] = true
+			m--
+			keepThis = true
 		}
-		if weekly > 0 {
-			if !keep[weeklyKey] {
-				keep[weeklyKey] = true
-				weekly--
-				keep[b.name] = true
-			}
+		if w > 0 && !keep[weeklyKey] {
+			keep[weeklyKey] = true
+			w--
+			keepThis = true
 		}
-		if daily > 0 {
-			if !keep[dailyKey] {
-				keep[dailyKey] = true
-				daily--
-				keep[b.name] = true
-			}
+		if d > 0 && !keep[dailyKey] {
+			keep[dailyKey] = true
+			d--
+			keepThis = true
+		}
+
+		if keepThis {
+			keep[b.name] = true
 		}
 	}
 
+	var toRemove []string
 	for _, b := range backups {
 		if !keep[b.name] {
-			sdk.Logf("Removing old database backup: %s", b.name)
-			if err := share.RemoveAll(b.path); err != nil {
-				return fmt.Errorf("removing backup %s: %w", b.name, err)
-			}
+			toRemove = append(toRemove, b.name)
 		}
 	}
 
-	return nil
+	return toRemove
 }
