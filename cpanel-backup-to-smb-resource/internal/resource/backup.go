@@ -102,7 +102,7 @@ func streamDirectory(ctx context.Context, sshClient *ssh.Client, share *smb2.Sha
 	}
 
 	var cmd strings.Builder
-	cmd.WriteString(fmt.Sprintf("cd /home/%s && tar -czf -", sdk.ShellQuote(remoteUser)))
+	fmt.Fprintf(&cmd, "cd /home/%s && tar -czf -", sdk.ShellQuote(remoteUser))
 	for _, exc := range excludes {
 		cmd.WriteString(" ")
 		cmd.WriteString(exc)
