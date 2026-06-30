@@ -2,8 +2,10 @@ go 1.26.3
 
 use (
 	./cpanel-backup-to-smb-resource
+	./cpanel-db-backup-resource
 	./cron
 	./github-app-token-resource
+	./restic-resource
 	./sdk
 	./smb-resource
 )
