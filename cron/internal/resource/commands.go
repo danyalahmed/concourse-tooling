@@ -29,7 +29,7 @@ func (d *Driver) Check(ctx context.Context, source Source, version *sdk.Version)
 	}
 
 	// First execution logic (no historical version provided)
-	if version == nil {
+	if version == nil || version.Ref == "" {
 		lastTrigger := getLatestPassedTrigger(ctx, sched, now)
 		if lastTrigger.IsZero() {
 			// If no trigger occurred within the past year, use 'now' as the baseline pinning point
