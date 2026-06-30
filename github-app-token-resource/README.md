@@ -109,4 +109,4 @@ cat /tmp/token
 
 - Devcontainer: Go 1.26-alpine, gopls with staticcheck, `gofmt` on save.
 - Build: `go build ./cmd/resource/`
-- Tests: none yet.
+- Tests: `go test ./internal/resource/...`

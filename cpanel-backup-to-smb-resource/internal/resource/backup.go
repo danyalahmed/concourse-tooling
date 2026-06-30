@@ -12,7 +12,7 @@ import (
 	sdk "github.com/danyalahmed/concourse-resource-sdk"
 )
 
-func runBackup(ctx context.Context, sshClient *ssh.Client, share *smb2.Share, source Source, params InParams) (Version, sdk.Metadata, error) {
+func runBackup(ctx context.Context, sshClient *ssh.Client, share *smb2.Share, source Source, params InParams) (sdk.Version, sdk.Metadata, error) {
 	now := time.Now()
 	stamp := now.Format("2006-01-02_15-04-05")
 	backupDir := sdk.ToSMBPath(fmt.Sprintf("%s/backup_%s", params.ParentDir, stamp))
@@ -23,40 +23,46 @@ func runBackup(ctx context.Context, sshClient *ssh.Client, share *smb2.Share, so
 	sdk.Logf("Creating backup directories on SMB: %s", backupDir)
 	if !params.DBOnly {
 		if err := share.MkdirAll(filesDir, 0755); err != nil {
-			return Version{}, nil, fmt.Errorf("creating files directory on SMB: %w", err)
+			return sdk.Version{}, nil, fmt.Errorf("creating files directory on SMB: %w", err)
 		}
 	}
-	if err := share.MkdirAll(dbDir, 0755); err != nil {
-		return Version{}, nil, fmt.Errorf("creating database directory on SMB: %w", err)
+	if !params.SkipDB {
+		if err := share.MkdirAll(dbDir, 0755); err != nil {
+			return sdk.Version{}, nil, fmt.Errorf("creating database directory on SMB: %w", err)
+		}
 	}
 
 	if !params.DBOnly {
 		for _, dir := range params.Directories {
 			sdk.Logf("Streaming directory %s to SMB...", dir)
 			if err := streamDirectory(ctx, sshClient, share, filesDir, source.Username, dir, params.Excludes); err != nil {
-				return Version{}, nil, fmt.Errorf("streaming directory %s: %w", dir, err)
+				return sdk.Version{}, nil, fmt.Errorf("streaming directory %s: %w", dir, err)
 			}
 		}
 	} else {
 		sdk.Logf("Skipping file backups (db_only=true)")
 	}
 
-	dbFile := dbDir + "\\all_dbs_" + now.Format("2006-01-02") + ".sql"
-	sdk.Logf("Streaming all databases to SMB: %s", dbFile)
-	if err := streamDatabase(ctx, sshClient, share, dbFile, source.Username, source.MySQLPassword); err != nil {
-		return Version{}, nil, fmt.Errorf("streaming database: %w", err)
+	if !params.SkipDB {
+		dbFile := dbDir + "\\all_dbs_" + now.Format("2006-01-02") + ".sql"
+		sdk.Logf("Streaming all databases to SMB: %s", dbFile)
+		if err := streamDatabase(ctx, sshClient, share, dbFile, source.Username, source.MySQLPassword); err != nil {
+			return sdk.Version{}, nil, fmt.Errorf("streaming database: %w", err)
+		}
+	} else {
+		sdk.Logf("Skipping database backup (skip_db=true)")
 	}
 
 	parentDir := sdk.ToSMBPath(params.ParentDir)
 	if params.KeepCount > 0 || params.KeepDays > 0 {
 		sdk.Logf("Applying retention policy (keep_count=%d, keep_days=%d)...", params.KeepCount, params.KeepDays)
 		if err := retainBackups(share, parentDir, params.KeepCount, params.KeepDays); err != nil {
-			return Version{}, nil, fmt.Errorf("retention failed: %w", err)
+			return sdk.Version{}, nil, fmt.Errorf("retention failed: %w", err)
 		}
 	}
 
 	v := fmt.Sprintf("%d", now.Unix())
-	return Version{Version: v}, sdk.Metadata{
+	return sdk.Version{Ref: v}, sdk.Metadata{
 		{Name: "backup_dir", Value: backupDir},
 		{Name: "directories", Value: strings.Join(params.Directories, ", ")},
 		{Name: "timestamp", Value: now.Format(time.RFC3339)},
@@ -96,7 +102,7 @@ func streamDirectory(ctx context.Context, sshClient *ssh.Client, share *smb2.Sha
 	}
 
 	var cmd strings.Builder
-	cmd.WriteString(fmt.Sprintf("cd /home/%s && tar -czf -", sdk.ShellQuote(remoteUser)))
+	fmt.Fprintf(&cmd, "cd /home/%s && tar -czf -", sdk.ShellQuote(remoteUser))
 	for _, exc := range excludes {
 		cmd.WriteString(" ")
 		cmd.WriteString(exc)
@@ -115,6 +121,16 @@ func streamDirectory(ctx context.Context, sshClient *ssh.Client, share *smb2.Sha
 		return fmt.Errorf("streaming tar command failed: %w", err)
 	}
 
+	// Verification: Check if the file exists and is not empty
+	stat, err := share.Stat(smbFilePath)
+	if err != nil {
+		return fmt.Errorf("verification failed for %s: %w", smbFilePath, err)
+	}
+	if stat.Size() == 0 {
+		return fmt.Errorf("verification failed: %s is empty", smbFilePath)
+	}
+	sdk.Logf("Successfully verified backup: %s (%d bytes)", smbFilePath, stat.Size())
+
 	return nil
 }
 
@@ -130,6 +146,16 @@ func streamDatabase(ctx context.Context, sshClient *ssh.Client, share *smb2.Shar
 	if err := sdk.ExecuteStream(ctx, sshClient, cmd, smbFile, os.Stderr); err != nil {
 		return fmt.Errorf("streaming mysqldump command failed: %w", err)
 	}
+
+	// Verification: Check if the file exists and is not empty
+	stat, err := share.Stat(dbFilePath)
+	if err != nil {
+		return fmt.Errorf("verification failed for %s: %w", dbFilePath, err)
+	}
+	if stat.Size() == 0 {
+		return fmt.Errorf("verification failed: %s is empty", dbFilePath)
+	}
+	sdk.Logf("Successfully verified database backup: %s (%d bytes)", dbFilePath, stat.Size())
 
 	return nil
 }

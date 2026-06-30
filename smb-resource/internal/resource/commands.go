@@ -13,7 +13,7 @@ import (
 	sdk "github.com/danyalahmed/concourse-resource-sdk"
 )
 
-func (d *Driver) Check(ctx context.Context, source Source, version *Version) ([]Version, error) {
+func (d *Driver) Check(ctx context.Context, source Source, version *sdk.Version) ([]sdk.Version, error) {
 	conn, session, share, err := sdk.SMBConnect(ctx, source.Host, source.Port, source.Username, source.Password, source.Share)
 	if err != nil {
 		return nil, err
@@ -30,16 +30,16 @@ func (d *Driver) Check(ctx context.Context, source Source, version *Version) ([]
 		return nil, fmt.Errorf("scanning watch path %s: %w", watchPath, err)
 	}
 	if latestModTime.IsZero() {
-		return []Version{}, nil
+		return []sdk.Version{}, nil
 	}
 
 	vStr := strconv.FormatInt(latestModTime.UnixNano(), 10)
-	latest := Version{Version: vStr}
+	latest := sdk.Version{Ref: vStr}
 
-	if version == nil || version.Version == "" || version.Version != vStr {
-		return []Version{latest}, nil
+	if version == nil || version.Ref == "" || version.Ref != vStr {
+		return []sdk.Version{latest}, nil
 	}
-	return []Version{}, nil
+	return []sdk.Version{}, nil
 }
 
 func latestMtime(ctx context.Context, share *smb2.Share, path string) (time.Time, error) {
@@ -74,7 +74,7 @@ func latestMtime(ctx context.Context, share *smb2.Share, path string) (time.Time
 	return latest, nil
 }
 
-func (d *Driver) In(ctx context.Context, source Source, version Version, params InParams, targetDir string) (Version, sdk.Metadata, error) {
+func (d *Driver) In(ctx context.Context, source Source, version sdk.Version, params InParams, targetDir string) (sdk.Version, sdk.Metadata, error) {
 	if params.File == "" {
 		return version, sdk.Metadata{}, nil
 	}
@@ -122,20 +122,20 @@ func (d *Driver) In(ctx context.Context, source Source, version Version, params 
 	}, nil
 }
 
-func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourceDir string) (Version, sdk.Metadata, error) {
+func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourceDir string) (sdk.Version, sdk.Metadata, error) {
 	if params.File == "" {
-		return Version{}, nil, fmt.Errorf("params.file must be specified in the put step")
+		return sdk.Version{}, nil, fmt.Errorf("params.file must be specified in the put step")
 	}
 
 	localPath := filepath.Join(sourceDir, params.File)
 	localStat, err := os.Stat(localPath)
 	if err != nil {
-		return Version{}, nil, fmt.Errorf("failed to stat local path %s: %w", localPath, err)
+		return sdk.Version{}, nil, fmt.Errorf("failed to stat local path %s: %w", localPath, err)
 	}
 
 	conn, session, share, err := sdk.SMBConnect(ctx, source.Host, source.Port, source.Username, source.Password, source.Share)
 	if err != nil {
-		return Version{}, nil, err
+		return sdk.Version{}, nil, err
 	}
 	defer sdk.SMBCleanup(conn, session, share)
 
@@ -148,10 +148,10 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 	if localStat.IsDir() {
 		sdk.Logf("Uploading directory: %s", localPath)
 		if err := sdk.UploadDir(share, localPath, remoteBase); err != nil {
-			return Version{}, nil, fmt.Errorf("failed to upload directory: %w", err)
+			return sdk.Version{}, nil, fmt.Errorf("failed to upload directory: %w", err)
 		}
 		v := strconv.FormatInt(time.Now().UnixNano(), 10)
-		return Version{Version: v}, sdk.Metadata{
+		return sdk.Version{Ref: v}, sdk.Metadata{
 			{Name: "type", Value: "directory"},
 			{Name: "path", Value: remoteBase},
 		}, nil
@@ -160,23 +160,23 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 	parent := remoteParent(remoteBase)
 	if parent != "" {
 		if err := share.MkdirAll(parent, 0755); err != nil {
-			return Version{}, nil, fmt.Errorf("failed to create remote directories: %w", err)
+			return sdk.Version{}, nil, fmt.Errorf("failed to create remote directories: %w", err)
 		}
 	}
 
 	sdk.Logf("Uploading file: %s", localPath)
 	sha, size, err := sdk.UploadFile(share, localPath, remoteBase)
 	if err != nil {
-		return Version{}, nil, err
+		return sdk.Version{}, nil, err
 	}
 
 	remoteStat, err := share.Stat(remoteBase)
 	if err != nil {
-		return Version{}, nil, fmt.Errorf("failed to stat uploaded file: %w", err)
+		return sdk.Version{}, nil, fmt.Errorf("failed to stat uploaded file: %w", err)
 	}
 	v := strconv.FormatInt(remoteStat.ModTime().UnixNano(), 10)
 
-	return Version{Version: v}, sdk.Metadata{
+	return sdk.Version{Ref: v}, sdk.Metadata{
 		{Name: "filename", Value: filepath.Base(destRoot)},
 		{Name: "size_bytes", Value: fmt.Sprintf("%d", size)},
 		{Name: "sha256", Value: sha},

@@ -1,0 +1,52 @@
+name: Test
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.3'
+          cache: true
+
+      - name: Sync workspace
+        run: go work sync
+
+      - name: Test SDK
+        run: |
+          cd sdk
+          go test -v ./...
+
+      - name: Test SMB Resource
+        run: |
+          cd smb-resource
+          go test -v ./...
+
+      - name: Test Cron Resource
+        run: |
+          cd cron
+          go test -v ./...
+
+      - name: Test GitHub App Token Resource
+        run: |
+          cd github-app-token-resource
+          go test -v ./...
+
+      - name: Test cPanel Backup Resource
+        run: |
+          cd cpanel-backup-to-smb-resource
+          go test -v ./...
+
+      - name: Verify Build
+        run: |
+          for dir in sdk smb-resource cron github-app-token-resource cpanel-backup-to-smb-resource; do
+            echo "Building $dir..."
+            (cd $dir && go build ./...)
+          done

@@ -19,15 +19,13 @@ type InParams struct {
 	Directories []string `json:"directories,omitempty"`
 	Excludes    []string `json:"excludes,omitempty"`
 	DBOnly      bool     `json:"db_only,omitempty"`
+	SkipDB      bool     `json:"skip_db,omitempty"`
 	KeepCount   int      `json:"keep_count,omitempty"`
 	KeepDays    int      `json:"keep_days,omitempty"`
 }
 
 type OutParams any
 
-type Version struct {
-	Version string `json:"version"`
-}
 
 type Driver struct{}
 
