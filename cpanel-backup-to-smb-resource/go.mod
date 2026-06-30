@@ -1,6 +1,6 @@
 module github.com/danyalahmed/cpanel-backup-to-smb-resource
 
-go 1.26.3
+go 1.26.4
 
 require (
 	github.com/cloudsoda/go-smb2 v0.0.0-20260512215926-828fc89b00fb

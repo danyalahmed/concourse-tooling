@@ -105,4 +105,4 @@ echo '{"source":{...},"params":{"file":"dist/","dest":"releases/v1.0/"}}' | ./re
 
 ## Development
 
-Go 1.26.3. Build: `go build ./cmd/resource/`
+Go 1.26.4. Build: `go build ./cmd/resource/`
