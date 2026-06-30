@@ -26,8 +26,10 @@ func runBackup(ctx context.Context, sshClient *ssh.Client, share *smb2.Share, so
 			return sdk.Version{}, nil, fmt.Errorf("creating files directory on SMB: %w", err)
 		}
 	}
-	if err := share.MkdirAll(dbDir, 0755); err != nil {
-		return sdk.Version{}, nil, fmt.Errorf("creating database directory on SMB: %w", err)
+	if !params.SkipDB {
+		if err := share.MkdirAll(dbDir, 0755); err != nil {
+			return sdk.Version{}, nil, fmt.Errorf("creating database directory on SMB: %w", err)
+		}
 	}
 
 	if !params.DBOnly {
@@ -41,10 +43,14 @@ func runBackup(ctx context.Context, sshClient *ssh.Client, share *smb2.Share, so
 		sdk.Logf("Skipping file backups (db_only=true)")
 	}
 
-	dbFile := dbDir + "\\all_dbs_" + now.Format("2006-01-02") + ".sql"
-	sdk.Logf("Streaming all databases to SMB: %s", dbFile)
-	if err := streamDatabase(ctx, sshClient, share, dbFile, source.Username, source.MySQLPassword); err != nil {
-		return sdk.Version{}, nil, fmt.Errorf("streaming database: %w", err)
+	if !params.SkipDB {
+		dbFile := dbDir + "\\all_dbs_" + now.Format("2006-01-02") + ".sql"
+		sdk.Logf("Streaming all databases to SMB: %s", dbFile)
+		if err := streamDatabase(ctx, sshClient, share, dbFile, source.Username, source.MySQLPassword); err != nil {
+			return sdk.Version{}, nil, fmt.Errorf("streaming database: %w", err)
+		}
+	} else {
+		sdk.Logf("Skipping database backup (skip_db=true)")
 	}
 
 	parentDir := sdk.ToSMBPath(params.ParentDir)

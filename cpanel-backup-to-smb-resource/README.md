@@ -78,5 +78,6 @@ jobs:
 * `directories`: *Required (if `db_only` is false).* A list of directories relative to the user's home to back up.
 * `excludes`: *Optional.* A list of patterns to exclude from the `tar` archives.
 * `db_only`: *Optional.* If `true`, only the MySQL dump will be performed. Defaults to `false`.
+* `skip_db`: *Optional.* If `true`, the MySQL dump will be skipped. Defaults to `false`.
 * `keep_count`: *Optional.* Number of recent backups to keep.
 * `keep_days`: *Optional.* Number of days to keep backups.

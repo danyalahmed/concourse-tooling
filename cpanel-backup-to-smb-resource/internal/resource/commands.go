@@ -20,6 +20,9 @@ func (d *Driver) In(ctx context.Context, source Source, version sdk.Version, par
 	if len(params.Directories) == 0 && !params.DBOnly {
 		return version, nil, fmt.Errorf("params.directories must include at least one entry when db_only is false")
 	}
+	if params.DBOnly && params.SkipDB {
+		return version, nil, fmt.Errorf("db_only and skip_db cannot both be true")
+	}
 
 	sdk.Logf("Connecting to SSH host %s...", source.Host)
 	sshClient, err := sdk.SSHConnect(ctx, source.Host, source.Port, source.Username, source.SSHKey, source.SSHKeyPassphrase)
