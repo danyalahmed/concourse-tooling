@@ -198,6 +198,37 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 		} else {
 			sdk.Log(string(out))
 		}
+
+		// 3. Restic specific insights
+		sdk.Log("Checking for Restic repository...")
+		repoExists := false
+		if _, err := os.Stat(filepath.Join(cfg.Repository, "config")); err == nil {
+			repoExists = true
+		}
+
+		if repoExists {
+			sdk.Log("Restic repository found. Gathering insights...")
+
+			// snapshots
+			sdk.Log("Listing Restic snapshots...")
+			sOut, sErr := restic.RunRestic(ctx, cfg.Password, "-r", cfg.Repository, "snapshots")
+			if sErr != nil {
+				sdk.Logf("Warning: restic snapshots failed: %v", sErr)
+			} else {
+				sdk.Log(string(sOut))
+			}
+
+			// stats
+			sdk.Log("Gathering Restic repository stats...")
+			stOut, stErr := restic.RunRestic(ctx, cfg.Password, "-r", cfg.Repository, "stats")
+			if stErr != nil {
+				sdk.Logf("Warning: restic stats failed: %v", stErr)
+			} else {
+				sdk.Log(string(stOut))
+			}
+		} else {
+			sdk.Log("No Restic repository config found at " + cfg.Repository)
+		}
 	}
 
 	v := fmt.Sprintf("%d", time.Now().Unix())

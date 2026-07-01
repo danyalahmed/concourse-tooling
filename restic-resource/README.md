@@ -55,7 +55,7 @@ Restores a snapshot from the Restic repository back to the cPanel server.
 
 ### 4. restic-stats-resource
 
-Explores the SMB share to show disk usage and file listings. Useful for debugging and monitoring storage.
+Explores the SMB share to show disk usage and file listings. If a Restic repository is found, it also displays snapshot lists and repository statistics. Useful for debugging and monitoring storage.
 
 **`put` Parameters:**
 
