@@ -8,8 +8,8 @@ import (
 	"time"
 
 	"github.com/cloudsoda/go-smb2"
-	"golang.org/x/crypto/ssh"
 	sdk "github.com/danyalahmed/concourse-resource-sdk"
+	"golang.org/x/crypto/ssh"
 )
 
 func runBackup(ctx context.Context, sshClient *ssh.Client, share *smb2.Share, source Source, params InParams) (sdk.Version, sdk.Metadata, error) {
@@ -28,21 +28,28 @@ func runBackup(ctx context.Context, sshClient *ssh.Client, share *smb2.Share, so
 	}
 
 	var backedUp []string
+	var errs []string
 	for _, db := range dbs {
 		user, pass := resolveCredentials(source, params, db)
 		dest := sdk.ToSMBPath(fmt.Sprintf("%s/%s.sql.gz", backupDir, db))
 
 		sdk.Logf("Backing up %s...", db)
-		if err := streamDatabase(ctx, sshClient, share, dest, user, pass, db); err != nil {
-			sdk.Logf("Warning: %s failed: %v", db, err)
+		err := streamDatabase(ctx, sshClient, share, dest, user, pass, db)
+		if err != nil {
+			sdk.Logf("Error: %s failed: %v", db, err)
+			errs = append(errs, fmt.Sprintf("%s: %v", db, err))
 			continue
 		}
 		backedUp = append(backedUp, db)
 	}
 
 	sdk.Log("Applying retention policy...")
-	if err := applyDBRetention(share, sdk.ToSMBPath(params.ParentDir), source); err != nil {
+	if err := applyDBRetention(share, sdk.ToSMBPath(params.ParentDir), source, params); err != nil {
 		sdk.Logf("Warning: Retention failed: %v", err)
+	}
+
+	if len(errs) > 0 {
+		return sdk.Version{}, nil, fmt.Errorf("backup failed for some databases: %s", strings.Join(errs, "; "))
 	}
 
 	return sdk.Version{Ref: fmt.Sprintf("%d", now.Unix())}, sdk.Metadata{

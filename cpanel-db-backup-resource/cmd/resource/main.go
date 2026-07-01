@@ -1,8 +1,8 @@
 package main
 
 import (
-	"github.com/danyalahmed/concourse-resource-sdk"
 	"cpanel-db-backup-resource/internal/resource"
+	"github.com/danyalahmed/concourse-resource-sdk"
 )
 
 func main() {

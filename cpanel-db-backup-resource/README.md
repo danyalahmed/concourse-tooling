@@ -82,3 +82,7 @@ jobs:
 * `databases`: *Optional.* A map of database names to credentials.
     * `user`: *Optional.* MySQL username for this database.
     * `pass`: *Optional.* MySQL password for this database.
+* `keep_daily`: *Optional.* Override the number of daily backups to keep.
+* `keep_weekly`: *Optional.* Override the number of weekly backups to keep.
+* `keep_monthly`: *Optional.* Override the number of monthly backups to keep.
+* `keep_yearly`: *Optional.* Override the number of yearly backups to keep.

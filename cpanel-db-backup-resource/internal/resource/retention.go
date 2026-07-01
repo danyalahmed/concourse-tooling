@@ -15,7 +15,7 @@ type dbBackupEntry struct {
 	timestamp time.Time
 }
 
-func applyDBRetention(share *smb2.Share, parentDir string, source Source) error {
+func applyDBRetention(share *smb2.Share, parentDir string, source Source, params InParams) error {
 	entries, err := share.ReadDir(parentDir)
 	if err != nil {
 		return fmt.Errorf("reading parent directory %s: %w", parentDir, err)
@@ -28,7 +28,7 @@ func applyDBRetention(share *smb2.Share, parentDir string, source Source) error 
 		}
 	}
 
-	toRemove := calculateBackupsToRemove(names, source)
+	toRemove := calculateBackupsToRemove(names, source, params)
 
 	for _, name := range toRemove {
 		path := sdk.ToSMBPath(parentDir + "/" + name)
@@ -41,21 +41,38 @@ func applyDBRetention(share *smb2.Share, parentDir string, source Source) error 
 	return nil
 }
 
-func calculateBackupsToRemove(names []string, source Source) []string {
-	daily := source.KeepDaily
-	if daily == 0 {
+func calculateBackupsToRemove(names []string, source Source, params InParams) []string {
+	var daily, weekly, monthly, yearly int
+
+	if params.KeepDaily != nil {
+		daily = *params.KeepDaily
+	} else if source.KeepDaily != nil {
+		daily = *source.KeepDaily
+	} else {
 		daily = 7
 	}
-	weekly := source.KeepWeekly
-	if weekly == 0 {
+
+	if params.KeepWeekly != nil {
+		weekly = *params.KeepWeekly
+	} else if source.KeepWeekly != nil {
+		weekly = *source.KeepWeekly
+	} else {
 		weekly = 4
 	}
-	monthly := source.KeepMonthly
-	if monthly == 0 {
+
+	if params.KeepMonthly != nil {
+		monthly = *params.KeepMonthly
+	} else if source.KeepMonthly != nil {
+		monthly = *source.KeepMonthly
+	} else {
 		monthly = 12
 	}
-	yearly := source.KeepYearly
-	if yearly == 0 {
+
+	if params.KeepYearly != nil {
+		yearly = *params.KeepYearly
+	} else if source.KeepYearly != nil {
+		yearly = *source.KeepYearly
+	} else {
 		yearly = 3
 	}
 
