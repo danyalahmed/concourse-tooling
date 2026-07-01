@@ -46,7 +46,7 @@ func MountAll(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("mkdir source: %w", err)
 	}
 
-	sshAddr := fmt.Sprintf("%s@%s:", cfg.SSHUser, cfg.SSHHost)
+	sshAddr := fmt.Sprintf("%s@%s:/home/%s", cfg.SSHUser, cfg.SSHHost, cfg.SSHUser)
 	sshPort := cfg.SSHPort
 	if sshPort == 0 {
 		sshPort = 22
