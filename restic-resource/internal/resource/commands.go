@@ -125,7 +125,7 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 			paths = append(paths, cfg.MountPathSource)
 		}
 
-		args := []string{"-r", cfg.Repository, "backup"}
+		args := []string{"-v", "-r", cfg.Repository, "backup"}
 		for _, exc := range params.Excludes {
 			args = append(args, "--exclude", exc)
 		}
