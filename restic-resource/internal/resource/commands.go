@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
-	sdk "github.com/danyalahmed/concourse-resource-sdk"
 	"restic-resource/internal/restic"
+
+	sdk "github.com/danyalahmed/concourse-resource-sdk"
 )
 
 type Driver struct {
@@ -22,7 +24,9 @@ func (d *Driver) Check(ctx context.Context, source Source, version *sdk.Version)
 
 func (d *Driver) setupConfig(source Source) (restic.Config, error) {
 	keyFile := "/tmp/ssh_key"
-	if err := os.WriteFile(keyFile, []byte(source.SSHKey), 0600); err != nil {
+	cleanedKey := strings.ReplaceAll(source.SSHKey, "\r", "")
+	cleanedKey = strings.TrimSpace(cleanedKey) + "\n"
+	if err := os.WriteFile(keyFile, []byte(cleanedKey), 0600); err != nil {
 		return restic.Config{}, fmt.Errorf("writing ssh key: %w", err)
 	}
 
@@ -131,19 +135,27 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 		args := []string{"-r", cfg.Repository, "forget"}
 
 		daily := source.KeepDaily
-		if daily == 0 { daily = 7 }
+		if daily == 0 {
+			daily = 7
+		}
 		args = append(args, "--keep-daily", fmt.Sprintf("%d", daily))
 
 		weekly := source.KeepWeekly
-		if weekly == 0 { weekly = 4 }
+		if weekly == 0 {
+			weekly = 4
+		}
 		args = append(args, "--keep-weekly", fmt.Sprintf("%d", weekly))
 
 		monthly := source.KeepMonthly
-		if monthly == 0 { monthly = 12 }
+		if monthly == 0 {
+			monthly = 12
+		}
 		args = append(args, "--keep-monthly", fmt.Sprintf("%d", monthly))
 
 		yearly := source.KeepYearly
-		if yearly == 0 { yearly = 3 }
+		if yearly == 0 {
+			yearly = 3
+		}
 		args = append(args, "--keep-yearly", fmt.Sprintf("%d", yearly))
 
 		args = append(args, "--prune")
