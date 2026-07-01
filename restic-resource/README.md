@@ -12,6 +12,7 @@ This directory contains three Concourse resources for managing cPanel backups us
 * `port`: *Optional.* SSH port (default `22`).
 * `username`: *Required.* SSH username.
 * `ssh_key`: *Required.* Private SSH key.
+* `ssh_key_passphrase`: *Optional.* Passphrase for the SSH key.
 * `smb_host`: *Required.* SMB server hostname.
 * `smb_username`: *Required.* SMB username.
 * `smb_password`: *Required.* SMB password.

@@ -17,6 +17,7 @@ type Config struct {
 	SSHUser          string
 	SSHPort          int
 	SSHKeyPath       string
+	SSHKeyPassphrase string
 	SMBHost          string
 	SMBShare         string
 	SMBUser          string
@@ -51,11 +52,43 @@ func MountAll(ctx context.Context, cfg Config) error {
 		sshPort = 22
 	}
 
+	keyPath := cfg.SSHKeyPath
+	if cfg.SSHKeyPassphrase != "" {
+		// Use expect or a temporary decrypted key for sshfs.
+		// Since we are in a container, we can decrypt the key to a temporary file.
+		decryptedKeyPath := cfg.SSHKeyPath + ".decrypted"
+		sdk.Log("Decrypting SSH key for mounting...")
+
+		// Use ssh-keygen to remove the passphrase and save to a new file
+		// ssh-keygen -p -P <passphrase> -N "" -f <key>
+		// Note: This modifies the file in place or requires interaction usually.
+		// Better: openssl or just use a tool that supports passphrases.
+		// Actually, we can use a temporary file and 'ssh-keygen -p' but it's tricky.
+		// Alternatives: use 'ssh-agent' or 'expect'.
+		// A simpler way: decrypt using 'openssl' or 'ssh-keygen -p' equivalent.
+		// Let's try: cp key to temp, then ssh-keygen -p -P <pass> -N "" -f <temp>
+
+		if err := copyFile(cfg.SSHKeyPath, decryptedKeyPath); err != nil {
+			return fmt.Errorf("preparing decrypted key: %w", err)
+		}
+		if err := os.Chmod(decryptedKeyPath, 0600); err != nil {
+			return err
+		}
+
+		// Try to decrypt. ssh-keygen -p -P <old> -N <new> -f <file>
+		decryptCmd := exec.CommandContext(ctx, "ssh-keygen", "-p", "-P", cfg.SSHKeyPassphrase, "-N", "", "-f", decryptedKeyPath)
+		if out, err := decryptCmd.CombinedOutput(); err != nil {
+			_ = os.Remove(decryptedKeyPath)
+			return fmt.Errorf("decrypting ssh key failed: %w (output: %s)", err, string(out))
+		}
+		keyPath = decryptedKeyPath
+		defer os.Remove(decryptedKeyPath)
+	}
+
 	sdk.Logf("Mounting SSHFS %s to %s", sshAddr, cfg.MountPathSource)
-	// sshfs -p 22 -o IdentityFile=/key -o StrictHostKeyChecking=no user@host:/ /mnt/source
 	sshfsArgs := []string{
 		"-p", fmt.Sprintf("%d", sshPort),
-		"-o", fmt.Sprintf("IdentityFile=%s", cfg.SSHKeyPath),
+		"-o", fmt.Sprintf("IdentityFile=%s", keyPath),
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "allow_other",
 		sshAddr, cfg.MountPathSource,
@@ -66,6 +99,14 @@ func MountAll(ctx context.Context, cfg Config) error {
 	}
 
 	return nil
+}
+
+func copyFile(src, dst string) error {
+	input, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(dst, input, 0600)
 }
 
 func UnmountAll(cfg Config) {

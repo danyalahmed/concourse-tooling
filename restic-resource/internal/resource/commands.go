@@ -38,6 +38,7 @@ func (d *Driver) setupConfig(source Source) (restic.Config, error) {
 		SSHUser:         source.Username,
 		SSHPort:         source.Port,
 		SSHKeyPath:      keyFile,
+		SSHKeyPassphrase: source.SSHKeyPassphrase,
 		SMBHost:         source.SMBHost,
 		SMBShare:        source.SMBShare,
 		SMBUser:         source.SMBUsername,
