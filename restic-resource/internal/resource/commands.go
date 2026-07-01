@@ -190,9 +190,9 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 			metadata = append(metadata, sdk.MetadataItem{Name: "disk_usage", Value: string(out)})
 		}
 
-		// 2. Run ls -R (limited to a few levels if needed, but let's do recursive for now)
-		sdk.Log("Listing files on SMB mount (ls -R)...")
-		out, err = exec.CommandContext(ctx, "ls", "-R", cfg.MountPathTarget).CombinedOutput()
+		// 2. Run ls -al (non-recursive to avoid restic internal noise)
+		sdk.Log("Listing files on SMB mount (ls -al)...")
+		out, err = exec.CommandContext(ctx, "ls", "-al", cfg.MountPathTarget).CombinedOutput()
 		if err != nil {
 			sdk.Logf("Warning: ls command failed: %v", err)
 		} else {
