@@ -1,4 +1,4 @@
-FROM docker.io/golang:1.26-alpine
+FROM docker.io/golang:1.26.4-alpine
 
 # Install necessary packages
 RUN apk update && apk add --no-cache \

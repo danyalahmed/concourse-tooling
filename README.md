@@ -12,7 +12,7 @@ Go-based [Concourse CI](https://concourse-ci.org) resource toolkit. A multi-modu
 
 ## Development
 
-Go 1.26.3 workspace. Build each resource from its directory:
+Go 1.26.4 workspace. Build each resource from its directory:
 
 ```sh
 cd <resource-dir>

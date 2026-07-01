@@ -1,4 +1,4 @@
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26.4-alpine AS builder
 WORKDIR /build
 COPY . .
 RUN go work sync && go mod download all
