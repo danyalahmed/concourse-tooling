@@ -5,6 +5,7 @@ This directory contains three Concourse resources for managing cPanel backups us
 1.  **restic-backup-resource**: Performs backups from cPanel to SMB.
 2.  **restic-prune-resource**: Manages retention and prunes the Restic repository.
 3.  **restic-restore-resource**: Restores data from SMB back to cPanel.
+4.  **restic-stats-resource**: Explores the SMB mount and shows disk usage and file list.
 
 ## Common Source Configuration
 
@@ -51,6 +52,14 @@ Restores a snapshot from the Restic repository back to the cPanel server.
 
 * `snapshot_id`: *Optional.* The ID of the snapshot to restore (default `latest`).
 * `target_subdir`: *Optional.* Subdirectory within cPanel to restore to.
+
+### 4. restic-stats-resource
+
+Explores the SMB share to show disk usage and file listings. Useful for debugging and monitoring storage.
+
+**`put` Parameters:**
+
+* (None)
 
 ## Requirements
 

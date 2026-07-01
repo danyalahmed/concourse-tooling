@@ -26,8 +26,7 @@ type Config struct {
 	MountPathTarget  string
 }
 
-func MountAll(ctx context.Context, cfg Config) error {
-	// 1. Mount SMB
+func MountSMB(ctx context.Context, cfg Config) error {
 	if err := os.MkdirAll(cfg.MountPathTarget, 0755); err != nil {
 		return fmt.Errorf("mkdir target: %w", err)
 	}
@@ -39,6 +38,14 @@ func MountAll(ctx context.Context, cfg Config) error {
 	cmd := exec.CommandContext(ctx, "mount", "-t", "cifs", smbAddr, cfg.MountPathTarget, "-o", opts)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("mount smb failed: %w (output: %s)", err, string(out))
+	}
+	return nil
+}
+
+func MountAll(ctx context.Context, cfg Config) error {
+	// 1. Mount SMB
+	if err := MountSMB(ctx, cfg); err != nil {
+		return err
 	}
 
 	// 2. Mount SSHFS
@@ -54,19 +61,8 @@ func MountAll(ctx context.Context, cfg Config) error {
 
 	keyPath := cfg.SSHKeyPath
 	if cfg.SSHKeyPassphrase != "" {
-		// Use expect or a temporary decrypted key for sshfs.
-		// Since we are in a container, we can decrypt the key to a temporary file.
 		decryptedKeyPath := cfg.SSHKeyPath + ".decrypted"
 		sdk.Log("Decrypting SSH key for mounting...")
-
-		// Use ssh-keygen to remove the passphrase and save to a new file
-		// ssh-keygen -p -P <passphrase> -N "" -f <key>
-		// Note: This modifies the file in place or requires interaction usually.
-		// Better: openssl or just use a tool that supports passphrases.
-		// Actually, we can use a temporary file and 'ssh-keygen -p' but it's tricky.
-		// Alternatives: use 'ssh-agent' or 'expect'.
-		// A simpler way: decrypt using 'openssl' or 'ssh-keygen -p' equivalent.
-		// Let's try: cp key to temp, then ssh-keygen -p -P <pass> -N "" -f <temp>
 
 		if err := copyFile(cfg.SSHKeyPath, decryptedKeyPath); err != nil {
 			return fmt.Errorf("preparing decrypted key: %w", err)
@@ -75,7 +71,6 @@ func MountAll(ctx context.Context, cfg Config) error {
 			return err
 		}
 
-		// Try to decrypt. ssh-keygen -p -P <old> -N <new> -f <file>
 		decryptCmd := exec.CommandContext(ctx, "ssh-keygen", "-p", "-P", cfg.SSHKeyPassphrase, "-N", "", "-f", decryptedKeyPath)
 		if out, err := decryptCmd.CombinedOutput(); err != nil {
 			_ = os.Remove(decryptedKeyPath)
@@ -93,7 +88,7 @@ func MountAll(ctx context.Context, cfg Config) error {
 		"-o", "allow_other",
 		sshAddr, cfg.MountPathSource,
 	}
-	cmd = exec.CommandContext(ctx, "sshfs", sshfsArgs...)
+	cmd := exec.CommandContext(ctx, "sshfs", sshfsArgs...)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("mount sshfs failed: %w (output: %s)", err, string(out))
 	}

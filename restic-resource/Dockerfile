@@ -8,7 +8,7 @@ ARG TARGET_CMD
 RUN go build -o /resource/res ./cmd/${TARGET_CMD}
 
 FROM alpine:3.18
-RUN apk add --no-cache restic sshfs cifs-utils fuse
+RUN apk add --no-cache restic sshfs cifs-utils fuse openssh-client
 RUN sed -i 's/#user_allow_other/user_allow_other/g' /etc/fuse.conf
 
 COPY --from=builder /resource/res /opt/resource/check

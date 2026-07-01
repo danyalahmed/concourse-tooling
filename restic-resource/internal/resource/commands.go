@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -92,18 +93,26 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 	if err != nil {
 		return sdk.Version{}, nil, err
 	}
-	if err := restic.MountAll(ctx, cfg); err != nil {
-		return sdk.Version{}, nil, err
-	}
-	defer restic.UnmountAll(cfg)
-
-	if err := restic.InitIfNeeded(ctx, cfg.Repository, cfg.Password); err != nil {
-		return sdk.Version{}, nil, err
-	}
 
 	action := d.Action
 	if params.Action != "" {
 		action = params.Action
+	}
+
+	if action == "stats" {
+		if err := restic.MountSMB(ctx, cfg); err != nil {
+			return sdk.Version{}, nil, err
+		}
+		defer restic.UnmountAll(cfg)
+	} else {
+		if err := restic.MountAll(ctx, cfg); err != nil {
+			return sdk.Version{}, nil, err
+		}
+		defer restic.UnmountAll(cfg)
+
+		if err := restic.InitIfNeeded(ctx, cfg.Repository, cfg.Password); err != nil {
+			return sdk.Version{}, nil, err
+		}
 	}
 
 	var metadata sdk.Metadata
@@ -166,6 +175,29 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 			return sdk.Version{}, nil, err
 		}
 		metadata = append(metadata, sdk.MetadataItem{Name: "output", Value: string(out)})
+
+	case "stats":
+		// Action to explore the SMB mount
+		sdk.Logf("Exploring SMB mount at %s...", cfg.MountPathTarget)
+
+		// 1. Run du -sh
+		sdk.Log("Running du -sh on mount point...")
+		out, err := exec.CommandContext(ctx, "du", "-sh", cfg.MountPathTarget).CombinedOutput()
+		if err != nil {
+			sdk.Logf("Warning: du command failed: %v", err)
+		} else {
+			sdk.Log(string(out))
+			metadata = append(metadata, sdk.MetadataItem{Name: "disk_usage", Value: string(out)})
+		}
+
+		// 2. Run ls -R (limited to a few levels if needed, but let's do recursive for now)
+		sdk.Log("Listing files on SMB mount (ls -R)...")
+		out, err = exec.CommandContext(ctx, "ls", "-R", cfg.MountPathTarget).CombinedOutput()
+		if err != nil {
+			sdk.Logf("Warning: ls command failed: %v", err)
+		} else {
+			sdk.Log(string(out))
+		}
 	}
 
 	v := fmt.Sprintf("%d", time.Now().Unix())
