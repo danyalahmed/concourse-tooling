@@ -15,7 +15,7 @@ import (
 )
 
 type Driver struct {
-	Action string // "backup", "prune", "restore"
+	Action string
 }
 
 func (d *Driver) Check(ctx context.Context, source Source, version *sdk.Version) ([]sdk.Version, error) {
@@ -37,24 +37,23 @@ func (d *Driver) setupConfig(source Source) (restic.Config, error) {
 	}
 
 	return restic.Config{
-		Repository:      repo,
-		Password:        source.RepositoryPass,
-		SSHHost:         source.Host,
-		SSHUser:         source.Username,
-		SSHPort:         source.Port,
-		SSHKeyPath:      keyFile,
+		Repository:       repo,
+		Password:         source.RepositoryPass,
+		SSHHost:          source.Host,
+		SSHUser:          source.Username,
+		SSHPort:          source.Port,
+		SSHKeyPath:       keyFile,
 		SSHKeyPassphrase: source.SSHKeyPassphrase,
-		SMBHost:         source.SMBHost,
-		SMBShare:        source.SMBShare,
-		SMBUser:         source.SMBUsername,
-		SMBPass:         source.SMBPassword,
-		MountPathSource: "/mnt/source",
-		MountPathTarget: "/mnt/target",
+		SMBHost:          source.SMBHost,
+		SMBShare:         source.SMBShare,
+		SMBUser:          source.SMBUsername,
+		SMBPass:          source.SMBPassword,
+		MountPathSource:  "/mnt/source",
+		MountPathTarget:  "/mnt/target",
 	}, nil
 }
 
 func (d *Driver) In(ctx context.Context, source Source, version sdk.Version, params InParams, targetDir string) (sdk.Version, sdk.Metadata, error) {
-	// If it's a restore resource, 'in' performs the restore
 	if d.Action == "restore" {
 		cfg, err := d.setupConfig(source)
 		if err != nil {
@@ -84,7 +83,6 @@ func (d *Driver) In(ctx context.Context, source Source, version sdk.Version, par
 		return version, sdk.Metadata{{Name: "snapshot_id", Value: snapshotID}}, nil
 	}
 
-	// For backup/prune, 'in' is just a no-op that reports the version
 	return version, nil, nil
 }
 
@@ -142,31 +140,7 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 
 	case "prune":
 		args := []string{"-r", cfg.Repository, "forget"}
-
-		daily := source.KeepDaily
-		if daily == 0 {
-			daily = 7
-		}
-		args = append(args, "--keep-daily", fmt.Sprintf("%d", daily))
-
-		weekly := source.KeepWeekly
-		if weekly == 0 {
-			weekly = 4
-		}
-		args = append(args, "--keep-weekly", fmt.Sprintf("%d", weekly))
-
-		monthly := source.KeepMonthly
-		if monthly == 0 {
-			monthly = 12
-		}
-		args = append(args, "--keep-monthly", fmt.Sprintf("%d", monthly))
-
-		yearly := source.KeepYearly
-		if yearly == 0 {
-			yearly = 3
-		}
-		args = append(args, "--keep-yearly", fmt.Sprintf("%d", yearly))
-
+		args = append(args, buildKeepArgs(source)...)
 		args = append(args, "--prune")
 
 		sdk.Log("Starting Restic prune (forget)...")
@@ -177,60 +151,53 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 		metadata = append(metadata, sdk.MetadataItem{Name: "output", Value: string(out)})
 
 	case "stats":
-		// Action to explore the SMB mount
 		sdk.Logf("Exploring SMB mount at %s...", cfg.MountPathTarget)
 
-		// 1. Run du -sh
 		sdk.Log("Running du -sh on mount point...")
-		out, err := exec.CommandContext(ctx, "du", "-sh", cfg.MountPathTarget).CombinedOutput()
-		if err != nil {
-			sdk.Logf("Warning: du command failed: %v", err)
-		} else {
+		if out, err := exec.CommandContext(ctx, "du", "-sh", cfg.MountPathTarget).CombinedOutput(); err == nil {
 			sdk.Log(string(out))
 			metadata = append(metadata, sdk.MetadataItem{Name: "disk_usage", Value: string(out)})
 		}
 
-		// 2. Run ls -al (non-recursive to avoid restic internal noise)
 		sdk.Log("Listing files on SMB mount (ls -al)...")
-		out, err = exec.CommandContext(ctx, "ls", "-al", cfg.MountPathTarget).CombinedOutput()
-		if err != nil {
-			sdk.Logf("Warning: ls command failed: %v", err)
-		} else {
+		if out, err := exec.CommandContext(ctx, "ls", "-al", cfg.MountPathTarget).CombinedOutput(); err == nil {
 			sdk.Log(string(out))
 		}
 
-		// 3. Restic specific insights
-		sdk.Log("Checking for Restic repository...")
-		repoExists := false
 		if _, err := os.Stat(filepath.Join(cfg.Repository, "config")); err == nil {
-			repoExists = true
-		}
+			sdk.Log("Gathering Restic repository insights...")
 
-		if repoExists {
-			sdk.Log("Restic repository found. Gathering insights...")
-
-			// snapshots
-			sdk.Log("Listing Restic snapshots...")
-			sOut, sErr := restic.RunRestic(ctx, cfg.Password, "-r", cfg.Repository, "snapshots")
-			if sErr != nil {
-				sdk.Logf("Warning: restic snapshots failed: %v", sErr)
-			} else {
-				sdk.Log(string(sOut))
+			if out, err := restic.RunRestic(ctx, cfg.Password, "-r", cfg.Repository, "snapshots"); err == nil {
+				sdk.Log("Snapshots:\n" + string(out))
 			}
-
-			// stats
-			sdk.Log("Gathering Restic repository stats...")
-			stOut, stErr := restic.RunRestic(ctx, cfg.Password, "-r", cfg.Repository, "stats")
-			if stErr != nil {
-				sdk.Logf("Warning: restic stats failed: %v", stErr)
-			} else {
-				sdk.Log(string(stOut))
+			if out, err := restic.RunRestic(ctx, cfg.Password, "-r", cfg.Repository, "stats"); err == nil {
+				sdk.Log("Stats:\n" + string(out))
 			}
-		} else {
-			sdk.Log("No Restic repository config found at " + cfg.Repository)
 		}
 	}
 
 	v := fmt.Sprintf("%d", time.Now().Unix())
 	return sdk.Version{Ref: v}, metadata, nil
+}
+
+func buildKeepArgs(source Source) []string {
+	args := []string{}
+	policies := []struct {
+		name string
+		val  int
+		def  int
+	}{
+		{"--keep-daily", source.KeepDaily, 7},
+		{"--keep-weekly", source.KeepWeekly, 4},
+		{"--keep-monthly", source.KeepMonthly, 12},
+		{"--keep-yearly", source.KeepYearly, 3},
+	}
+	for _, p := range policies {
+		v := p.val
+		if v == 0 {
+			v = p.def
+		}
+		args = append(args, p.name, fmt.Sprintf("%d", v))
+	}
+	return args
 }
