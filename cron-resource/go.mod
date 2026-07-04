@@ -1,4 +1,4 @@
-module github.com/danyalahmed/cron
+module github.com/danyalahmed/cron-resource
 
 go 1.26.4
 

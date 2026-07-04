@@ -3,7 +3,7 @@ go 1.26.4
 use (
 	./cpanel-backup-to-smb-resource
 	./cpanel-db-backup-resource
-	./cron
+	./cron-resource
 	./github-app-token-resource
 	./restic-resource
 	./sdk

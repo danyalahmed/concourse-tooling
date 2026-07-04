@@ -2,7 +2,7 @@ FROM golang:1.26.4-alpine AS builder
 WORKDIR /build
 COPY . .
 RUN go work sync && go mod download all
-RUN CGO_ENABLED=0 go build -o /build/resource ./cron/cmd/resource/
+RUN CGO_ENABLED=0 go build -o /build/resource ./cron-resource/cmd/resource/
 RUN mkdir -p /build/opt/resource && \
     ln -s /usr/local/bin/resource /build/opt/resource/check && \
     ln -s /usr/local/bin/resource /build/opt/resource/in && \
