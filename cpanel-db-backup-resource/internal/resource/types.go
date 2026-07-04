@@ -1,42 +1,21 @@
 package resource
 
-type DBCredentials struct {
-	Username string `json:"user"`
-	Password string `json:"pass"`
-}
-
 type Source struct {
-	Host               string `json:"host"`
-	Username           string `json:"username"` // Default SSH/DB user
-	Port               int    `json:"port,omitempty"`
-	SSHKey             string `json:"ssh_key"`
-	SSHKeyPassphrase   string `json:"ssh_key_passphrase,omitempty"`
-	AdminMySQLPassword string `json:"admin_mysql_password"`
-	SMBHost            string `json:"smb_host"`
-	SMBPort            int    `json:"smb_port,omitempty"`
-	SMBUsername        string `json:"smb_username"`
-	SMBPassword        string `json:"smb_password"`
-	SMBShare           string `json:"smb_share"`
-
-	// Retention policy
-	KeepDaily   *int `json:"keep_daily,omitempty"`
-	KeepWeekly  *int `json:"keep_weekly,omitempty"`
-	KeepMonthly *int `json:"keep_monthly,omitempty"`
-	KeepYearly  *int `json:"keep_yearly,omitempty"`
+	Host             string `json:"host"`
+	Username         string `json:"username"` // SSH username
+	Port             int    `json:"port,omitempty"`
+	SSHKey           string `json:"ssh_key"`
+	SSHKeyPassphrase string `json:"ssh_key_passphrase,omitempty"`
 }
 
 type InParams struct {
-	ParentDir string                   `json:"parent_dir"`
-	Databases map[string]DBCredentials `json:"databases,omitempty"` // Map of db_name -> credentials
-	AllDBs    bool                     `json:"all_dbs,omitempty"`   // If true, backup all accessible DBs
-
-	// Retention overrides
-	KeepDaily   *int `json:"keep_daily,omitempty"`
-	KeepWeekly  *int `json:"keep_weekly,omitempty"`
-	KeepMonthly *int `json:"keep_monthly,omitempty"`
-	KeepYearly  *int `json:"keep_yearly,omitempty"`
+	Engine    string   `json:"engine"`    // "mysql" or "postgres"
+	DBUser    string   `json:"db_user"`   // Database admin user
+	DBPass    string   `json:"db_pass"`   // Database admin password
+	Databases []string `json:"databases"` // Explicit list of databases to dump
+	AllDBs    bool     `json:"all_dbs"`   // If true, dump all accessible databases
 }
 
-type OutParams = InParams // Reuse InParams for Out
+type OutParams = InParams
 
 type Driver struct{}

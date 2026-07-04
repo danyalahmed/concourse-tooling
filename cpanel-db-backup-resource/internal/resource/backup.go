@@ -3,120 +3,130 @@ package resource
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"time"
 
-	"github.com/cloudsoda/go-smb2"
 	sdk "github.com/danyalahmed/concourse-resource-sdk"
 	"golang.org/x/crypto/ssh"
 )
 
-func runBackup(ctx context.Context, sshClient *ssh.Client, share *smb2.Share, source Source, params InParams) (sdk.Version, sdk.Metadata, error) {
-	now := time.Now()
-	dateStamp := now.Format("2006-01-02")
-	backupDir := sdk.ToSMBPath(fmt.Sprintf("%s/%s", params.ParentDir, dateStamp))
-
-	sdk.Logf("Preparing backup directory: %s", backupDir)
-	if err := share.MkdirAll(backupDir, 0755); err != nil {
-		return sdk.Version{}, nil, fmt.Errorf("mkdir on SMB: %w", err)
+func runBackup(ctx context.Context, sshClient *ssh.Client, source Source, params InParams) (sdk.Version, sdk.Metadata, error) {
+	engine := strings.ToLower(params.Engine)
+	if engine == "" {
+		engine = "mysql"
 	}
 
-	dbs, err := resolveDatabases(ctx, sshClient, source, params)
+	backupDir := fmt.Sprintf("/home/%s/database-dumps/%s", source.Username, engine)
+	sdk.Logf("Ensuring backup directory exists: %s", backupDir)
+
+	mkdirCmd := fmt.Sprintf("mkdir -p %s", sdk.ShellQuote(backupDir))
+	if _, _, err := sdk.ExecuteCommand(ctx, sshClient, mkdirCmd); err != nil {
+		return sdk.Version{}, nil, fmt.Errorf("creating backup directory: %w", err)
+	}
+
+	dbs, err := resolveDatabases(ctx, sshClient, engine, params)
 	if err != nil {
-		return sdk.Version{}, nil, err
+		return sdk.Version{}, nil, fmt.Errorf("resolving databases: %w", err)
 	}
 
 	var backedUp []string
 	var errs []string
 	for _, db := range dbs {
-		user, pass := resolveCredentials(source, params, db)
-		dest := sdk.ToSMBPath(fmt.Sprintf("%s/%s.sql.gz", backupDir, db))
+		sdk.Logf("Dumping database: %s", db)
+		destFile := fmt.Sprintf("%s/%s.sql", backupDir, db)
 
-		sdk.Logf("Backing up %s...", db)
-		err := streamDatabase(ctx, sshClient, share, dest, user, pass, db)
-		if err != nil {
-			sdk.Logf("Error: %s failed: %v", db, err)
+		var dumpCmd string
+		switch engine {
+		case "postgres":
+			dumpCmd = fmt.Sprintf("PGPASSWORD=%s pg_dump -U %s -h localhost -F p %s > %s",
+				sdk.ShellQuote(params.DBPass),
+				sdk.ShellQuote(params.DBUser),
+				sdk.ShellQuote(db),
+				sdk.ShellQuote(destFile),
+			)
+		case "mysql":
+			fallthrough
+		default:
+			dumpCmd = fmt.Sprintf("MYSQL_PWD=%s mysqldump -u %s %s > %s",
+				sdk.ShellQuote(params.DBPass),
+				sdk.ShellQuote(params.DBUser),
+				sdk.ShellQuote(db),
+				sdk.ShellQuote(destFile),
+			)
+		}
+
+		if _, _, err := sdk.ExecuteCommand(ctx, sshClient, dumpCmd); err != nil {
+			sdk.Logf("Error: dump failed for %s: %v", db, err)
 			errs = append(errs, fmt.Sprintf("%s: %v", db, err))
 			continue
 		}
 		backedUp = append(backedUp, db)
 	}
 
-	sdk.Log("Applying retention policy...")
-	if err := applyDBRetention(share, sdk.ToSMBPath(params.ParentDir), source, params); err != nil {
-		sdk.Logf("Warning: Retention failed: %v", err)
-	}
-
 	if len(errs) > 0 {
-		return sdk.Version{}, nil, fmt.Errorf("backup failed for some databases: %s", strings.Join(errs, "; "))
+		return sdk.Version{}, nil, fmt.Errorf("failed to dump some databases: %s", strings.Join(errs, "; "))
 	}
 
+	now := time.Now()
 	return sdk.Version{Ref: fmt.Sprintf("%d", now.Unix())}, sdk.Metadata{
 		{Name: "backup_dir", Value: backupDir},
+		{Name: "engine", Value: engine},
 		{Name: "databases", Value: strings.Join(backedUp, ", ")},
 		{Name: "timestamp", Value: now.Format(time.RFC3339)},
 	}, nil
 }
 
-func resolveDatabases(ctx context.Context, sshClient *ssh.Client, source Source, params InParams) ([]string, error) {
+func resolveDatabases(ctx context.Context, sshClient *ssh.Client, engine string, params InParams) ([]string, error) {
 	if !params.AllDBs {
-		var dbs []string
-		for db := range params.Databases {
-			dbs = append(dbs, db)
+		if len(params.Databases) > 0 {
+			return params.Databases, nil
 		}
-		return dbs, nil
+		return nil, fmt.Errorf("no databases specified and all_dbs is false")
 	}
 
-	sdk.Log("Fetching all databases...")
-	cmd := fmt.Sprintf("MYSQL_PWD=%s mysql -u %s -e 'SHOW DATABASES;' -N", sdk.ShellQuote(source.AdminMySQLPassword), sdk.ShellQuote(source.Username))
-	out, stderr, err := sdk.ExecuteCommand(ctx, sshClient, cmd)
+	var listCmd string
+	switch engine {
+	case "postgres":
+		listCmd = fmt.Sprintf("PGPASSWORD=%s psql -U %s -h localhost -At -c 'SELECT datname FROM pg_database WHERE datistemplate = false;'",
+			sdk.ShellQuote(params.DBPass),
+			sdk.ShellQuote(params.DBUser),
+		)
+	case "mysql":
+		fallthrough
+	default:
+		listCmd = fmt.Sprintf("MYSQL_PWD=%s mysql -u %s -e 'SHOW DATABASES;' -N",
+			sdk.ShellQuote(params.DBPass),
+			sdk.ShellQuote(params.DBUser),
+		)
+	}
+
+	out, stderr, err := sdk.ExecuteCommand(ctx, sshClient, listCmd)
 	if err != nil {
-		return nil, fmt.Errorf("list dbs: %w (stderr: %s)", err, string(stderr))
+		return nil, fmt.Errorf("listing databases: %w (stderr: %s)", err, string(stderr))
 	}
 
-	var filtered []string
+	var dbs []string
 	for _, line := range strings.Split(string(out), "\n") {
 		db := strings.TrimSpace(line)
-		switch db {
-		case "", "information_schema", "performance_schema", "mysql", "sys":
+		if db == "" {
 			continue
-		default:
-			filtered = append(filtered, db)
 		}
-	}
-	return filtered, nil
-}
 
-func resolveCredentials(source Source, params InParams, db string) (string, string) {
-	user, pass := source.Username, source.AdminMySQLPassword
-	if creds, ok := params.Databases[db]; ok {
-		if creds.Username != "" {
-			user = creds.Username
+		// Filter out system databases
+		if engine == "mysql" {
+			switch db {
+			case "information_schema", "performance_schema", "mysql", "sys":
+				continue
+			}
+		} else if engine == "postgres" {
+			switch db {
+			case "postgres": // Should we include postgres? Usually yes, it can have user data, but often excluded in system dumps.
+				// For now let's keep it unless told otherwise.
+			}
 		}
-		if creds.Password != "" {
-			pass = creds.Password
-		}
-	}
-	return user, pass
-}
 
-func streamDatabase(ctx context.Context, sshClient *ssh.Client, share *smb2.Share, dest, user, password, db string) error {
-	cmd := fmt.Sprintf("MYSQL_PWD=%s mysqldump -u %s %s | gzip", sdk.ShellQuote(password), sdk.ShellQuote(user), sdk.ShellQuote(db))
-
-	f, err := share.OpenFile(dest, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	if err != nil {
-		return fmt.Errorf("create SMB file: %w", err)
-	}
-	defer f.Close()
-
-	if err := sdk.ExecuteStream(ctx, sshClient, cmd, f, os.Stderr); err != nil {
-		return fmt.Errorf("mysqldump stream: %w", err)
+		dbs = append(dbs, db)
 	}
 
-	stat, err := share.Stat(dest)
-	if err != nil || stat.Size() == 0 {
-		return fmt.Errorf("verification failed: empty or missing file")
-	}
-	return nil
+	return dbs, nil
 }
