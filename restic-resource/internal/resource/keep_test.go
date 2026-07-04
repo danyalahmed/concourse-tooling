@@ -12,7 +12,7 @@ func TestBuildKeepArgs(t *testing.T) {
 		expected []string
 	}{
 		{
-			name: "defaults",
+			name:   "defaults",
 			source: Source{},
 			expected: []string{
 				"--keep-daily", "7",
@@ -24,10 +24,10 @@ func TestBuildKeepArgs(t *testing.T) {
 		{
 			name: "overrides",
 			source: Source{
-				KeepDaily: 1,
-				KeepWeekly: 2,
+				KeepDaily:   1,
+				KeepWeekly:  2,
 				KeepMonthly: 3,
-				KeepYearly: 4,
+				KeepYearly:  4,
 			},
 			expected: []string{
 				"--keep-daily", "1",
