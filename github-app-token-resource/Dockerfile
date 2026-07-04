@@ -1,8 +1,6 @@
 FROM golang:1.26.4-alpine AS builder
 WORKDIR /build
-COPY go.work ./
-COPY sdk/go.mod ./sdk/
-COPY github-app-token-resource/go.mod github-app-token-resource/go.sum ./github-app-token-resource/
+COPY . .
 RUN go mod download
 COPY sdk/ ./sdk/
 COPY github-app-token-resource/ ./github-app-token-resource/
