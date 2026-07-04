@@ -20,9 +20,8 @@ Always returns a new version based on the current timestamp.
 
 1.  Connects to the cPanel server via SSH.
 2.  Ensures the backup directory exists: `/home/{ssh_username}/database-dumps/{engine}/`.
-3.  If `all_dbs` is true, it fetches the list of all databases for the specified engine.
-4.  Iterates through databases and executes `mysqldump` or `pg_dump` to create uncompressed `.sql` files.
-5.  Database files are named `{database-name}.sql` (no timestamps in filenames).
+3.  Iterates through specified databases and executes `mysqldump` or `pg_dump` to create uncompressed `.sql` files.
+4.  Database files are named `{database-name}.sql` (no timestamps in filenames).
 
 ### `in`: No-op
 
@@ -53,7 +52,9 @@ jobs:
       engine: postgres
       db_user: postgres_admin
       db_pass: ((postgres-pass))
-      all_dbs: true
+      databases:
+        - site1_db
+        - site2_db
 ```
 
 ## Parameters
@@ -61,5 +62,4 @@ jobs:
 * `engine`: *Optional.* The database engine to use (`mysql` or `postgres`). Defaults to `mysql`.
 * `db_user`: *Required.* Database admin username.
 * `db_pass`: *Required.* Database admin password.
-* `databases`: *Optional.* A list of database names to dump.
-* `all_dbs`: *Optional.* If `true`, dump all databases accessible by the provided admin user. Defaults to `false`.
+* `databases`: *Required.* A list of database names to dump.

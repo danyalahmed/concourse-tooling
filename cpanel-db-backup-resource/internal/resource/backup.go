@@ -24,14 +24,13 @@ func runBackup(ctx context.Context, sshClient *ssh.Client, source Source, params
 		return sdk.Version{}, nil, fmt.Errorf("creating backup directory: %w", err)
 	}
 
-	dbs, err := resolveDatabases(ctx, sshClient, engine, params)
-	if err != nil {
-		return sdk.Version{}, nil, fmt.Errorf("resolving databases: %w", err)
+	if len(params.Databases) == 0 {
+		return sdk.Version{}, nil, fmt.Errorf("no databases specified")
 	}
 
 	var backedUp []string
 	var errs []string
-	for _, db := range dbs {
+	for _, db := range params.Databases {
 		sdk.Logf("Dumping database: %s", db)
 		destFile := fmt.Sprintf("%s/%s.sql", backupDir, db)
 
@@ -74,59 +73,4 @@ func runBackup(ctx context.Context, sshClient *ssh.Client, source Source, params
 		{Name: "databases", Value: strings.Join(backedUp, ", ")},
 		{Name: "timestamp", Value: now.Format(time.RFC3339)},
 	}, nil
-}
-
-func resolveDatabases(ctx context.Context, sshClient *ssh.Client, engine string, params InParams) ([]string, error) {
-	if !params.AllDBs {
-		if len(params.Databases) > 0 {
-			return params.Databases, nil
-		}
-		return nil, fmt.Errorf("no databases specified and all_dbs is false")
-	}
-
-	var listCmd string
-	switch engine {
-	case "postgres":
-		listCmd = fmt.Sprintf("PGPASSWORD=%s psql -U %s -h localhost -At -c 'SELECT datname FROM pg_database WHERE datistemplate = false;'",
-			sdk.ShellQuote(params.DBPass),
-			sdk.ShellQuote(params.DBUser),
-		)
-	case "mysql":
-		fallthrough
-	default:
-		listCmd = fmt.Sprintf("MYSQL_PWD=%s mysql -u %s -e 'SHOW DATABASES;' -N",
-			sdk.ShellQuote(params.DBPass),
-			sdk.ShellQuote(params.DBUser),
-		)
-	}
-
-	out, stderr, err := sdk.ExecuteCommand(ctx, sshClient, listCmd)
-	if err != nil {
-		return nil, fmt.Errorf("listing databases: %w (stderr: %s)", err, string(stderr))
-	}
-
-	var dbs []string
-	for _, line := range strings.Split(string(out), "\n") {
-		db := strings.TrimSpace(line)
-		if db == "" {
-			continue
-		}
-
-		// Filter out system databases
-		if engine == "mysql" {
-			switch db {
-			case "information_schema", "performance_schema", "mysql", "sys":
-				continue
-			}
-		} else if engine == "postgres" {
-			switch db {
-			case "postgres": // Should we include postgres? Usually yes, it can have user data, but often excluded in system dumps.
-				// For now let's keep it unless told otherwise.
-			}
-		}
-
-		dbs = append(dbs, db)
-	}
-
-	return dbs, nil
 }
