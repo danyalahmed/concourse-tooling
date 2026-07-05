@@ -2,7 +2,6 @@ package restic
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"os/exec"
 
@@ -34,7 +33,7 @@ func MountAll(ctx context.Context, cfg Config) error {
 		return err
 	}
 
-	remotePath := fmt.Sprintf("/home/%s", cfg.SSHUser)
+	remotePath := "/home/" + cfg.SSHUser
 	return sdk.MountSSHFS(ctx, cfg.SSHHost, cfg.SSHPort, cfg.SSHUser, cfg.SSHKeyPath, remotePath, cfg.MountPathSource)
 }
 
@@ -48,7 +47,7 @@ func RunRestic(ctx context.Context, password string, args ...string) ([]byte, er
 	cmd.Env = append(os.Environ(), "RESTIC_PASSWORD="+password)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return out, fmt.Errorf("restic: %w (output: %s)", err, string(out))
+		return out, err
 	}
 	return out, nil
 }

@@ -3,7 +3,7 @@ package resource
 import sdk "github.com/danyalahmed/concourse-resource-sdk"
 
 type Source struct {
-	sdk.SMBSourceLegacy
+	sdk.SMBSource
 	Watch string `json:"watch,omitempty"`
 }
 

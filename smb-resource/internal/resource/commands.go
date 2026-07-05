@@ -13,12 +13,6 @@ import (
 )
 
 func (d *Driver) Check(ctx context.Context, source Source, version *sdk.Version) ([]sdk.Version, error) {
-	// For SMB resource, we still use the library-based approach for 'check' and 'in'/'out'
-	// to avoid requiring privileged mode for basic operations.
-	// However, the user agreed we *can* use system commands for exploration.
-	// Since 'check' needs to scan the directory, let's keep the library approach for now
-	// to avoid mounting overhead in every check cycle.
-
 	conn, session, share, err := sdk.SMBConnect(ctx, source.Host, source.Port, source.Username, source.Password, source.Share)
 	if err != nil {
 		return nil, err
@@ -128,9 +122,7 @@ func (d *Driver) In(ctx context.Context, source Source, version sdk.Version, par
 }
 
 func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourceDir string) (sdk.Version, sdk.Metadata, error) {
-	// If the user wants to use system commands for exploration, we can provide an 'action' to do so.
 	if params.File == "" {
-		// Example of using system mount for exploration
 		mountPath := "/mnt/smb_exploration"
 		if err := sdk.MountSMB(ctx, source.Host, source.Username, source.Password, source.Share, mountPath); err != nil {
 			return sdk.Version{}, nil, err
