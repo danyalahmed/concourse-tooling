@@ -1,6 +1,6 @@
 # cPanel Database Backup Resource
 
-A Concourse resource that performs database dumps (MySQL or PostgreSQL) on a cPanel server via SSH. The dumps are stored uncompressed in a local directory on the cPanel server, intended to be subsequently picked up by a backup tool like Restic.
+A Concourse resource that performs database dumps (MySQL/MariaDB) on a cPanel server via SSH. The dumps are stored uncompressed in a local directory on the cPanel server, intended to be subsequently picked up by a backup tool like Restic.
 
 ## Source Configuration
 
@@ -20,7 +20,7 @@ Always returns a new version based on the current timestamp.
 
 1.  Connects to the cPanel server via SSH.
 2.  Ensures the backup directory exists: `/home/{ssh_username}/database-dumps/{engine}/`.
-3.  Iterates through specified databases and executes `mysqldump` or `pg_dump` to create uncompressed `.sql` files.
+3.  Iterates through specified databases and executes `mysqldump` to create uncompressed `.sql` files.
 4.  Database files are named `{database-name}.sql` (no timestamps in filenames).
 
 ### `in`: No-op
@@ -49,9 +49,9 @@ jobs:
   plan:
   - put: db-dump
     params:
-      engine: postgres
-      db_user: postgres_admin
-      db_pass: ((postgres-pass))
+      engine: mysql
+      db_user: db_admin
+      db_pass: ((db-pass))
       databases:
         - site1_db
         - site2_db
@@ -59,7 +59,7 @@ jobs:
 
 ## Parameters
 
-* `engine`: *Optional.* The database engine to use (`mysql` or `postgres`). Defaults to `mysql`.
+* `engine`: *Optional.* The database engine to use (`mysql`). Defaults to `mysql`.
 * `db_user`: *Required.* Database admin username.
 * `db_pass`: *Required.* Database admin password.
 * `databases`: *Required.* A list of database names to dump.

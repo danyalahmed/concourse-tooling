@@ -16,6 +16,10 @@ func runBackup(ctx context.Context, sshClient *ssh.Client, source Source, params
 		engine = "mysql"
 	}
 
+	if engine != "mysql" {
+		return sdk.Version{}, nil, fmt.Errorf("unsupported database engine: %s (currently only 'mysql' is supported)", engine)
+	}
+
 	backupDir := fmt.Sprintf("/home/%s/database-dumps/%s", source.Username, engine)
 	sdk.Logf("Ensuring backup directory exists: %s", backupDir)
 
@@ -36,13 +40,6 @@ func runBackup(ctx context.Context, sshClient *ssh.Client, source Source, params
 
 		var dumpCmd string
 		switch engine {
-		case "postgres":
-			dumpCmd = fmt.Sprintf("PGPASSWORD=%s pg_dump -U %s -h localhost -F p %s > %s",
-				sdk.ShellQuote(params.DBPass),
-				sdk.ShellQuote(params.DBUser),
-				sdk.ShellQuote(db),
-				sdk.ShellQuote(destFile),
-			)
 		case "mysql":
 			fallthrough
 		default:
