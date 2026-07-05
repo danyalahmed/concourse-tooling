@@ -31,7 +31,7 @@ jobs:
 
       - name: Test Cron Resource
         run: |
-          cd cron
+          cd cron-resource
           go test -v ./...
 
       - name: Test GitHub App Token Resource
