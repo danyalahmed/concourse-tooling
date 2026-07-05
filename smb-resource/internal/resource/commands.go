@@ -4,16 +4,21 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/cloudsoda/go-smb2"
 	sdk "github.com/danyalahmed/concourse-resource-sdk"
 )
 
 func (d *Driver) Check(ctx context.Context, source Source, version *sdk.Version) ([]sdk.Version, error) {
+	// For SMB resource, we still use the library-based approach for 'check' and 'in'/'out'
+	// to avoid requiring privileged mode for basic operations.
+	// However, the user agreed we *can* use system commands for exploration.
+	// Since 'check' needs to scan the directory, let's keep the library approach for now
+	// to avoid mounting overhead in every check cycle.
+
 	conn, session, share, err := sdk.SMBConnect(ctx, source.Host, source.Port, source.Username, source.Password, source.Share)
 	if err != nil {
 		return nil, err
@@ -33,7 +38,7 @@ func (d *Driver) Check(ctx context.Context, source Source, version *sdk.Version)
 		return []sdk.Version{}, nil
 	}
 
-	vStr := strconv.FormatInt(latestModTime.UnixNano(), 10)
+	vStr := fmt.Sprintf("%d", latestModTime.UnixNano())
 	latest := sdk.Version{Ref: vStr}
 
 	if version == nil || version.Ref == "" || version.Ref != vStr {
@@ -42,7 +47,7 @@ func (d *Driver) Check(ctx context.Context, source Source, version *sdk.Version)
 	return []sdk.Version{}, nil
 }
 
-func latestMtime(ctx context.Context, share *smb2.Share, path string) (time.Time, error) {
+func latestMtime(ctx context.Context, share interface{ ReadDir(string) ([]os.FileInfo, error) }, path string) (time.Time, error) {
 	entries, err := share.ReadDir(path)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("reading directory %s: %w", path, err)
@@ -123,8 +128,20 @@ func (d *Driver) In(ctx context.Context, source Source, version sdk.Version, par
 }
 
 func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourceDir string) (sdk.Version, sdk.Metadata, error) {
+	// If the user wants to use system commands for exploration, we can provide an 'action' to do so.
 	if params.File == "" {
-		return sdk.Version{}, nil, fmt.Errorf("params.file must be specified in the put step")
+		// Example of using system mount for exploration
+		mountPath := "/mnt/smb_exploration"
+		if err := sdk.MountSMB(ctx, source.Host, source.Username, source.Password, source.Share, mountPath); err != nil {
+			return sdk.Version{}, nil, err
+		}
+		defer sdk.Unmount(mountPath)
+
+		sdk.Logf("Exploring SMB mount at %s...", mountPath)
+		out, _ := exec.Command("ls", "-R", mountPath).CombinedOutput()
+		sdk.Log(string(out))
+
+		return sdk.Version{Ref: fmt.Sprintf("%d", time.Now().Unix())}, sdk.Metadata{{Name: "exploration", Value: "completed"}}, nil
 	}
 
 	localPath := filepath.Join(sourceDir, params.File)
@@ -150,7 +167,7 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 		if err := sdk.UploadDir(share, localPath, remoteBase); err != nil {
 			return sdk.Version{}, nil, fmt.Errorf("failed to upload directory: %w", err)
 		}
-		v := strconv.FormatInt(time.Now().UnixNano(), 10)
+		v := fmt.Sprintf("%d", time.Now().UnixNano())
 		return sdk.Version{Ref: v}, sdk.Metadata{
 			{Name: "type", Value: "directory"},
 			{Name: "path", Value: remoteBase},
@@ -174,7 +191,7 @@ func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourc
 	if err != nil {
 		return sdk.Version{}, nil, fmt.Errorf("failed to stat uploaded file: %w", err)
 	}
-	v := strconv.FormatInt(remoteStat.ModTime().UnixNano(), 10)
+	v := fmt.Sprintf("%d", remoteStat.ModTime().UnixNano())
 
 	return sdk.Version{Ref: v}, sdk.Metadata{
 		{Name: "filename", Value: filepath.Base(destRoot)},

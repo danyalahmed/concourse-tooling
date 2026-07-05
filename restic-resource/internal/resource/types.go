@@ -1,18 +1,13 @@
 package resource
 
+import sdk "github.com/danyalahmed/concourse-resource-sdk"
+
 type Source struct {
-	Host             string `json:"host"`
-	Username         string `json:"username"`
-	Port             int    `json:"port,omitempty"`
-	SSHKey           string `json:"ssh_key"`
-	SSHKeyPassphrase string `json:"ssh_key_passphrase,omitempty"`
-	SMBHost          string `json:"smb_host"`
-	SMBPort          int    `json:"smb_port,omitempty"`
-	SMBUsername      string `json:"smb_username"`
-	SMBPassword      string `json:"smb_password"`
-	SMBShare         string `json:"smb_share"`
-	RepositoryPath   string `json:"repository_path"` // Path inside SMB share
-	RepositoryPass   string `json:"repository_pass"`
+	sdk.SSHSource
+	sdk.SMBSource
+
+	RepositoryPath string `json:"repository_path"` // Path inside SMB share
+	RepositoryPass string `json:"repository_pass"`
 
 	// Retention defaults
 	KeepDaily   int `json:"keep_daily,omitempty"`

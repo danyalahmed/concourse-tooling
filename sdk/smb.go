@@ -14,6 +14,24 @@ import (
 	"github.com/cloudsoda/go-smb2"
 )
 
+// SMBSource represents common SMB configuration for Concourse resources.
+type SMBSource struct {
+	Host     string `json:"smb_host"`
+	Port     int    `json:"smb_port,omitempty"`
+	Username string `json:"smb_username"`
+	Password string `json:"smb_password"`
+	Share    string `json:"smb_share"`
+}
+
+// SMBSourceLegacy represents the legacy SMB configuration for backward compatibility.
+type SMBSourceLegacy struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port,omitempty"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Share    string `json:"share,omitempty"`
+}
+
 // SMBConnect establishes a connection to an SMB share.
 func SMBConnect(ctx context.Context, host string, port int, username, password, share string) (net.Conn, *smb2.Session, *smb2.Share, error) {
 	if port == 0 {
