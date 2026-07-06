@@ -1,7 +1,7 @@
 IMAGE_REGISTRY ?= ghcr.io/danyalahmed/concourse-tooling
 
 # Single-binary resources (one Dockerfile, one binary each)
-SINGLE_IMAGES := smb-resource github-app-token-resource cpanel-backup-to-smb-resource cpanel-db-backup-resource cron-resource
+SINGLE_IMAGES := smb-resource cpanel-db-backup-resource cron-resource
 
 # Multi-command resources (one image per subcommand)
 RESTIC_CMDS := backup prune restore stats
