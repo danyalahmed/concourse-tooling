@@ -43,7 +43,7 @@ func runBackup(ctx context.Context, sshClient *ssh.Client, source Source, params
 		case "mysql":
 			fallthrough
 		default:
-			dumpCmd = fmt.Sprintf("MYSQL_PWD=%s mysqldump -u %s %s > %s",
+			dumpCmd = fmt.Sprintf("MYSQL_PWD=%s mysqldump --single-transaction -u %s %s > %s",
 				sdk.ShellQuote(params.DBPass),
 				sdk.ShellQuote(params.DBUser),
 				sdk.ShellQuote(db),
@@ -51,9 +51,10 @@ func runBackup(ctx context.Context, sshClient *ssh.Client, source Source, params
 			)
 		}
 
-		if _, _, err := sdk.ExecuteCommand(ctx, sshClient, dumpCmd); err != nil {
+		if _, stderr, err := sdk.ExecuteCommand(ctx, sshClient, dumpCmd); err != nil {
 			sdk.Logf("Error: dump failed for %s: %v", db, err)
-			errs = append(errs, fmt.Sprintf("%s: %v", db, err))
+			sdk.Logf("Remote log: %s", string(stderr))
+			errs = append(errs, fmt.Sprintf("%s: %v ", db, err))
 			continue
 		}
 		backedUp = append(backedUp, db)

@@ -2,6 +2,7 @@ package restic
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 
@@ -47,7 +48,7 @@ func RunRestic(ctx context.Context, password string, args ...string) ([]byte, er
 	cmd.Env = append(os.Environ(), "RESTIC_PASSWORD="+password)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return out, err
+		return out, fmt.Errorf("restic %v failed: %w\noutput:\n%s", args, err, string(out))
 	}
 	return out, nil
 }
