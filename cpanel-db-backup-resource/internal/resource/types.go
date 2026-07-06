@@ -1,11 +1,9 @@
 package resource
 
+import sdk "github.com/danyalahmed/concourse-resource-sdk"
+
 type Source struct {
-	Host             string `json:"host"`
-	Username         string `json:"username"` // SSH username
-	Port             int    `json:"port,omitempty"`
-	SSHKey           string `json:"ssh_key"`
-	SSHKeyPassphrase string `json:"ssh_key_passphrase,omitempty"`
+	sdk.SSHSource
 }
 
 type InParams struct {

@@ -1,12 +1,10 @@
 package resource
 
+import sdk "github.com/danyalahmed/concourse-resource-sdk"
+
 type Source struct {
-	Host     string `json:"host"`
-	Share    string `json:"share,omitempty"`
-	Username string `json:"username"`
-	Password string `json:"password"`
-	Port     int    `json:"port,omitempty"`
-	Watch    string `json:"watch,omitempty"`
+	sdk.SMBSource
+	Watch string `json:"watch,omitempty"`
 }
 
 

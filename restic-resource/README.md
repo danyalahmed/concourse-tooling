@@ -1,6 +1,6 @@
 # Restic Backup Resources for cPanel
 
-This directory contains three Concourse resources for managing cPanel backups using Restic and SMB.
+This directory contains resources for managing cPanel backups using Restic and SMB.
 
 1.  **restic-backup-resource**: Performs backups from cPanel to SMB.
 2.  **restic-prune-resource**: Manages retention and prunes the Restic repository.

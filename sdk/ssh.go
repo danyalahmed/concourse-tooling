@@ -6,11 +6,22 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"os"
+	"os/exec"
 	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 )
+
+// SSHSource represents common SSH configuration for Concourse resources.
+type SSHSource struct {
+	Host             string `json:"host"`
+	Username         string `json:"username"`
+	Port             int    `json:"port,omitempty"`
+	SSHKey           string `json:"ssh_key"`
+	SSHKeyPassphrase string `json:"ssh_key_passphrase,omitempty"`
+}
 
 // SSHConnect establishes an SSH connection. Pass an empty passphrase for unencrypted keys.
 func SSHConnect(ctx context.Context, host string, port int, username, sshKey, passphrase string) (*ssh.Client, error) {
@@ -89,3 +100,34 @@ func ExecuteCommand(ctx context.Context, client *ssh.Client, cmd string) ([]byte
 	return stdout.Bytes(), stderr.Bytes(), err
 }
 
+// PrepareSSHKeyFile writes the SSH key to a temporary file and decrypts it if a passphrase is provided.
+// This is useful for external commands like sshfs that require a key file.
+// It returns the path to the key file and a cleanup function.
+func PrepareSSHKeyFile(ctx context.Context, sshKey, passphrase string) (string, func(), error) {
+	tmpFile, err := os.CreateTemp("", "ssh-key")
+	if err != nil {
+		return "", nil, fmt.Errorf("creating temp file: %w", err)
+	}
+	keyPath := tmpFile.Name()
+	tmpFile.Close()
+	cleanup := func() { os.Remove(keyPath) }
+
+	cleanedKey := strings.ReplaceAll(sshKey, "\r", "")
+	cleanedKey = strings.TrimSpace(cleanedKey) + "\n"
+
+	if err := os.WriteFile(keyPath, []byte(cleanedKey), 0600); err != nil {
+		cleanup()
+		return "", nil, fmt.Errorf("writing ssh key: %w", err)
+	}
+
+	if passphrase != "" {
+		Log("Decrypting SSH key...")
+		cmd := exec.CommandContext(ctx, "ssh-keygen", "-p", "-P", passphrase, "-N", "", "-f", keyPath)
+		if out, err := cmd.CombinedOutput(); err != nil {
+			cleanup()
+			return "", nil, fmt.Errorf("decrypting ssh key: %w (output: %s)", err, string(out))
+		}
+	}
+
+	return keyPath, cleanup, nil
+}

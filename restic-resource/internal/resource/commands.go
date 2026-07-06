@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"restic-resource/internal/restic"
@@ -23,12 +22,10 @@ func (d *Driver) Check(ctx context.Context, source Source, version *sdk.Version)
 	return []sdk.Version{{Ref: v}}, nil
 }
 
-func (d *Driver) setupConfig(source Source) (restic.Config, error) {
-	keyFile := "/tmp/ssh_key"
-	cleanedKey := strings.ReplaceAll(source.SSHKey, "\r", "")
-	cleanedKey = strings.TrimSpace(cleanedKey) + "\n"
-	if err := os.WriteFile(keyFile, []byte(cleanedKey), 0600); err != nil {
-		return restic.Config{}, fmt.Errorf("writing ssh key: %w", err)
+func (d *Driver) setupConfig(ctx context.Context, source Source) (restic.Config, func(), error) {
+	keyPath, cleanup, err := sdk.PrepareSSHKeyFile(ctx, source.SSHKey, source.SSHKeyPassphrase)
+	if err != nil {
+		return restic.Config{}, nil, err
 	}
 
 	repo := "/mnt/target"
@@ -36,29 +33,32 @@ func (d *Driver) setupConfig(source Source) (restic.Config, error) {
 		repo = filepath.Join("/mnt/target", source.RepositoryPath)
 	}
 
-	return restic.Config{
+	cfg := restic.Config{
 		Repository:       repo,
 		Password:         source.RepositoryPass,
-		SSHHost:          source.Host,
-		SSHUser:          source.Username,
-		SSHPort:          source.Port,
-		SSHKeyPath:       keyFile,
+		SSHHost:          source.SSHSource.Host,
+		SSHUser:          source.SSHSource.Username,
+		SSHPort:          source.SSHSource.Port,
+		SSHKeyPath:       keyPath,
 		SSHKeyPassphrase: source.SSHKeyPassphrase,
-		SMBHost:          source.SMBHost,
-		SMBShare:         source.SMBShare,
-		SMBUser:          source.SMBUsername,
-		SMBPass:          source.SMBPassword,
+		SMBHost:          source.SMBSource.Host,
+		SMBShare:         source.SMBSource.Share,
+		SMBUser:          source.SMBSource.Username,
+		SMBPass:          source.SMBSource.Password,
 		MountPathSource:  "/mnt/source",
 		MountPathTarget:  "/mnt/target",
-	}, nil
+	}
+	return cfg, cleanup, nil
 }
 
 func (d *Driver) In(ctx context.Context, source Source, version sdk.Version, params InParams, targetDir string) (sdk.Version, sdk.Metadata, error) {
 	if d.Action == "restore" {
-		cfg, err := d.setupConfig(source)
+		cfg, cleanup, err := d.setupConfig(ctx, source)
 		if err != nil {
 			return version, nil, err
 		}
+		defer cleanup()
+
 		if err := restic.MountAll(ctx, cfg); err != nil {
 			return version, nil, err
 		}
@@ -87,10 +87,11 @@ func (d *Driver) In(ctx context.Context, source Source, version sdk.Version, par
 }
 
 func (d *Driver) Out(ctx context.Context, source Source, params OutParams, sourceDir string) (sdk.Version, sdk.Metadata, error) {
-	cfg, err := d.setupConfig(source)
+	cfg, cleanup, err := d.setupConfig(ctx, source)
 	if err != nil {
 		return sdk.Version{}, nil, err
 	}
+	defer cleanup()
 
 	action := d.Action
 	if params.Action != "" {

@@ -15,21 +15,21 @@ resources:
   - name: data
     type: smb
     source:
-      host: fileserver.example.com
-      share: shared
-      username: ((smb-username))
-      password: ((smb-password))
-      # port: 445 (default)
+      smb_host: fileserver.example.com
+      smb_share: shared
+      smb_username: ((smb-username))
+      smb_password: ((smb-password))
+      # smb_port: 445 (default)
       # watch: nuxt-test            # path to monitor for changes (optional)
 ```
 
 | field | description |
 |-------|-------------|
-| `host` | SMB server hostname or IP |
-| `share` | Share name (optional, default root) |
-| `username` | SMB username |
-| `password` | SMB password |
-| `port` | SMB port (default `445`) |
+| `smb_host` | SMB server hostname or IP |
+| `smb_share` | Share name (optional, default root) |
+| `smb_username` | SMB username |
+| `smb_password` | SMB password |
+| `smb_port` | SMB port (default `445`) |
 | `watch` | Path on the share to monitor for changes (optional). When set, `check` recursively scans this path and returns a new version whenever any file or directory within it is modified. |
 
 ## Usage
@@ -71,6 +71,15 @@ If `params.file` points to a local directory, the entire directory tree is uploa
     dest: releases/v1.0/
 ```
 
+### Exploration (Experimental)
+
+If `put` is called without a `file` parameter, the resource will attempt to mount the SMB share using system commands and list the contents. This requires the worker to run in **privileged** mode.
+
+```yaml
+- put: data
+  params: {}
+```
+
 ## Behavior
 
 | command | what happens |
@@ -83,24 +92,6 @@ If `params.file` points to a local directory, the entire directory tree is uploa
 
 ```sh
 docker build -t smb-resource .
-```
-
-## Local testing
-
-```sh
-go build ./cmd/resource/
-
-# download a single file
-echo '{"source":{"host":"...","username":"...","password":"...","share":"..."},"params":{"file":"test.txt"}}' | ./resource in /tmp/out
-
-# download a directory recursively
-echo '{"source":{...},"params":{"file":"backups/"}}' | ./resource in /tmp/out
-
-# upload a file
-echo '{"source":{...},"params":{"file":"build.tgz","dest":"remote/build.tgz"}}' | ./resource out /tmp/source
-
-# upload a directory recursively
-echo '{"source":{...},"params":{"file":"dist/","dest":"releases/v1.0/"}}' | ./resource out /tmp/source
 ```
 
 ## Development
